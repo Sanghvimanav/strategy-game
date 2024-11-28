@@ -1,0 +1,836 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Hex Conquest</title>
+    <style>
+        /* Basic Styles */
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f0f0f0;
+            margin: 0;
+            overflow: hidden;
+        }
+        #game-container {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+        }
+        #action-buttons {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            z-index: 10;
+        }
+        #next-turn-button-container {
+            position: absolute;
+            top: 50px;
+            left: 10px;
+            z-index: 10;
+        }
+        #restart-button-container {
+            position: absolute;
+            top: 90px;
+            left: 10px;
+            z-index: 10;
+        }
+        #color-selection {
+            position: absolute;
+            top: 130px;
+            left: 10px;
+            z-index: 10;
+            background-color: rgba(255, 255, 255, 0.95);
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.3);
+            max-width: 400px;
+        }
+        .action-button {
+            padding: 8px 15px;
+            font-size: 14px;
+            margin: 5px;
+            cursor: pointer;
+            border: none;
+            border-radius: 4px;
+            color: #fff;
+            transition: opacity 0.3s;
+        }
+        .action-button:hover:not(:disabled) {
+            opacity: 0.8;
+        }
+        .action-button:disabled {
+            cursor: not-allowed;
+            opacity: 0.5;
+        }
+        #log {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            max-height: 150px;
+            overflow-y: auto;
+            background-color: #fff;
+            padding: 5px;
+            box-sizing: border-box;
+            font-size: 14px;
+            border-top: 1px solid #ccc;
+        }
+        svg {
+            width: 100%;
+            height: 100%;
+        }
+        .hex {
+            stroke: #000;
+            stroke-width: 2;
+            fill: #e0e0e0;
+            cursor: pointer;
+            transition: fill 0.3s, stroke 0.3s;
+        }
+        .hex:hover {
+            fill: #d0d0d0;
+        }
+        .hex.highlighted {
+            stroke-width: 5;
+        }
+        .unit {
+            pointer-events: none;
+        }
+        .unit-circle {
+            stroke: #000;
+            stroke-width: 1;
+        }
+        .unit-text {
+            font-size: 14px;
+            font-weight: bold;
+            fill: #fff;
+            text-anchor: middle;
+            dominant-baseline: middle;
+            pointer-events: none;
+        }
+        .trail-line {
+            stroke: rgba(0, 0, 0, 0.5);
+            stroke-width: 2;
+            stroke-dasharray: 4;
+        }
+        .fire-icon {
+            /* Removed fill: red; to allow dynamic coloring */
+            pointer-events: none;
+            opacity: 0.8;
+        }
+        /* New Styles for Horizontal Color Buttons */
+        .color-buttons {
+            display: flex;
+            flex-direction: row;
+            gap: 10px; /* Space between buttons */
+            flex-wrap: wrap; /* Wrap to next line if necessary */
+            margin-top: 10px;
+        }
+        .selected-color {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-top: 10px;
+        }
+        .selected-color span {
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            display: inline-block;
+            border: 2px solid #000;
+        }
+        .current-player {
+            margin-bottom: 10px;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <div id="game-container">
+        <div id="action-buttons"></div>
+        <div id="next-turn-button-container"></div>
+        <div id="restart-button-container"></div>
+        <div id="color-selection"></div>
+        <div id="log"></div>
+    </div>
+
+    <script>
+        // Define constants
+        const NUM_PLAYERS = 2;
+        const GRID_SIZE = 4;  // Radius for diameter=7
+        const MAX_TURNS = 15; // Adjusted max turns for larger grid
+        const TILE_SIZE = 40; // Adjusted tile size to fit larger grid
+
+        const gameContainer = document.getElementById('game-container');
+        const actionButtons = document.getElementById('action-buttons');
+        const nextTurnButtonContainer = document.getElementById('next-turn-button-container');
+        const restartButtonContainer = document.getElementById('restart-button-container');
+        const colorSelectionContainer = document.getElementById('color-selection');
+        const logElement = document.getElementById('log');
+
+        // Create SVG element for the game board
+        const svgNS = "http://www.w3.org/2000/svg";
+        let svg = document.createElementNS(svgNS, 'svg');
+        gameContainer.appendChild(svg);
+
+        let game = {};
+
+        // Initialize the game
+        initGame();
+
+        function initGame() {
+            // Reset the game state
+            game = {
+                grid: {},
+                players: [], // Array to hold player objects
+                turn: 1,
+                awaitingActions: false,
+                unitsToPlan: [],
+                playerActions: Array(NUM_PLAYERS).fill(null).map(() => []), // Actions for each player
+                availableColors: ['#4CAF50', '#0000FF', '#FFA500', '#800080', '#FF0000', '#00FFFF'], // Green, Blue, Orange, Purple, Red, Cyan
+                trails: [],
+                fires: [],
+            };
+            // Clear existing SVG and create a new one
+            if (svg) {
+                gameContainer.removeChild(svg);
+            }
+            svg = document.createElementNS(svgNS, 'svg');
+            gameContainer.appendChild(svg);
+            // Clear UI elements
+            actionButtons.innerHTML = '';
+            nextTurnButtonContainer.innerHTML = '';
+            restartButtonContainer.innerHTML = '';
+            colorSelectionContainer.innerHTML = '';
+            logElement.innerHTML = '';
+            // Show color selection
+            showColorSelection();
+        }
+
+        function showColorSelection() {
+            colorSelectionContainer.innerHTML = '<p><strong>Select Colors for Players:</strong></p>';
+            let currentPlayerIndex = 0;
+            promptPlayerColor(currentPlayerIndex);
+        }
+
+        function promptPlayerColor(playerIndex) {
+            if (playerIndex >= NUM_PLAYERS) {
+                // All players have selected colors, start the game
+                startGame();
+                return;
+            }
+
+            colorSelectionContainer.innerHTML += `<div class="current-player">Player ${playerIndex + 1}: Select Your Color</div>`;
+
+            // Create a container for color buttons with horizontal layout
+            const buttonsContainer = document.createElement('div');
+            buttonsContainer.classList.add('color-buttons');
+
+            // Display available colors
+            game.availableColors.forEach((color, index) => {
+                const colorButton = document.createElement('button');
+                colorButton.classList.add('action-button');
+                colorButton.style.backgroundColor = color;
+                colorButton.style.width = '30px';
+                colorButton.style.height = '30px';
+                colorButton.style.padding = '0'; // Remove padding for uniform size
+                colorButton.setAttribute('data-color', color); // Store color in data attribute
+                colorButton.title = color;
+                colorButton.addEventListener('click', () => {
+                    // Assign color to the player
+                    if (!game.players[playerIndex]) {
+                        game.players[playerIndex] = {
+                            playerId: playerIndex + 1,
+                            units: [],
+                            color: color,
+                        };
+                        log(`Player ${playerIndex + 1} selected color ${color}.`);
+                        // Display selected color
+                        const selectedDiv = document.createElement('div');
+                        selectedDiv.classList.add('selected-color');
+                        selectedDiv.innerHTML = `
+                            <span style="background-color:${color};"></span>
+                            <span>${color}</span>
+                        `;
+                        colorSelectionContainer.appendChild(selectedDiv);
+                        // Remove selected color from availableColors
+                        game.availableColors = game.availableColors.filter(c => c !== color);
+                        // Proceed to next player
+                        promptPlayerColor(playerIndex + 1);
+                    }
+                });
+                buttonsContainer.appendChild(colorButton);
+            });
+
+            colorSelectionContainer.appendChild(buttonsContainer);
+        }
+
+        function startGame() {
+            colorSelectionContainer.innerHTML = '';
+            createGrid();
+            createPlayers();
+            updateDisplay();
+            log("Game started. All players have selected their colors.");
+            // Create Next Turn button
+            const nextTurnButton = document.createElement('button');
+            nextTurnButton.textContent = 'Execute Turn';
+            nextTurnButton.classList.add('action-button');
+            nextTurnButton.style.backgroundColor = '#008CBA'; // Blue
+            nextTurnButton.addEventListener('click', executeTurn);
+            nextTurnButtonContainer.appendChild(nextTurnButton);
+
+            // Create Restart Game button
+            const restartButton = document.createElement('button');
+            restartButton.textContent = 'Restart Game';
+            restartButton.classList.add('action-button');
+            restartButton.style.backgroundColor = '#f44336'; // Red
+            restartButton.addEventListener('click', initGame);
+            restartButtonContainer.appendChild(restartButton);
+        }
+
+        function createGrid() {
+            for (let q = -GRID_SIZE + 1; q <= GRID_SIZE - 1; q++) {
+                for (let r = -GRID_SIZE + 1; r <= GRID_SIZE - 1; r++) {
+                    const s = -q - r;
+                    if (Math.abs(s) < GRID_SIZE) {
+                        const tile = createHexTile(q, r);
+                        game.grid[`${q},${r}`] = tile;
+                    }
+                }
+            }
+        }
+
+        function createHexTile(q, r) {
+            const tile = {
+                q: q,
+                r: r,
+                s: -q - r,
+                unit: null,
+                owner: null,
+                element: null,
+            };
+            const { x, y } = hexToPixel(q, r);
+            const points = polygonPoints(6, TILE_SIZE, x, y);
+            const hex = document.createElementNS(svgNS, 'polygon');
+            hex.setAttribute('points', points);
+            hex.setAttribute('class', 'hex');
+            hex.dataset.q = q;
+            hex.dataset.r = r;
+            tile.element = hex;
+            svg.appendChild(hex);
+            // Attach tile reference for event handling
+            hex.tile = tile;
+            hex.addEventListener('click', onTileClick);
+            return tile;
+        }
+
+        function createPlayers() {
+            const startPositions = [
+                [0, -GRID_SIZE + 1], 
+                [0, GRID_SIZE - 1]
+            ];
+            for (let i = 0; i < NUM_PLAYERS; i++) {
+                const [q, r] = startPositions[i];
+                const tile = game.grid[`${q},${r}`];
+                const player = game.players[i];
+                const unit = {
+                    playerId: player.playerId,
+                    strength: 1,
+                    tile: tile,
+                    power: 0, // Initialize power units to zero
+                    isMoving: false,
+                };
+                tile.unit = unit;
+                tile.owner = player.playerId;
+                player.units.push(unit);
+            }
+        }
+
+        function hexToPixel(q, r) {
+            const size = TILE_SIZE;
+            const x = size * (Math.sqrt(3) * q + Math.sqrt(3)/2 * r) + window.innerWidth / 2;
+            const y = size * (3/2 * r) + window.innerHeight / 2;
+            return { x, y };
+        }
+
+        function polygonPoints(sides, radius, centerX, centerY) {
+            let points = '';
+            for (let i = 0; i < sides; i++) {
+                const angle_deg = 60 * i - 30;
+                const angle_rad = Math.PI / 180 * angle_deg;
+                const x = centerX + radius * Math.cos(angle_rad);
+                const y = centerY + radius * Math.sin(angle_rad);
+                points += `${x},${y} `;
+            }
+            return points.trim();
+        }
+
+        function updateDisplay() {
+            // Clear existing units
+            const existingUnits = svg.querySelectorAll('.unit');
+            existingUnits.forEach(unit => svg.removeChild(unit));
+
+            // Trails and fires are not cleared here to keep them visible until next turn
+
+            for (const key in game.grid) {
+                const tile = game.grid[key];
+                const hex = tile.element;
+                // Update fill color based on ownership
+                if (tile.owner) {
+                    const player = game.players.find(p => p.playerId === tile.owner);
+                    hex.setAttribute('fill', player.color);
+                } else {
+                    hex.setAttribute('fill', '#e0e0e0');
+                }
+                // Reset stroke
+                hex.setAttribute('stroke', '#000');
+                hex.setAttribute('stroke-width', '2');
+                hex.classList.remove('highlighted');
+                // Add unit circle if unit exists
+                if (tile.unit) {
+                    const { x, y } = hexToPixel(tile.q, tile.r);
+                    const unitCircle = document.createElementNS(svgNS, 'circle');
+                    unitCircle.setAttribute('cx', x);
+                    unitCircle.setAttribute('cy', y);
+                    unitCircle.setAttribute('r', TILE_SIZE / 2 - 5);
+                    unitCircle.setAttribute('fill', getPlayerColor(tile.unit.playerId));
+                    unitCircle.setAttribute('class', 'unit unit-circle');
+                    svg.appendChild(unitCircle);
+
+                    // Display power units as text
+                    const unitText = document.createElementNS(svgNS, 'text');
+                    unitText.setAttribute('x', x);
+                    unitText.setAttribute('y', y + 5); // Adjusted for visual centering
+                    unitText.textContent = tile.unit.power;
+                    unitText.setAttribute('class', 'unit unit-text');
+                    svg.appendChild(unitText);
+                }
+            }
+        }
+
+        function getPlayerColor(playerId) {
+            const player = game.players.find(p => p.playerId === playerId);
+            return player.color;
+        }
+
+        function onTileClick(event) {
+            const tile = event.currentTarget.tile;
+            if (!tile.owner || tile.unit === null) {
+                log(`Cannot select this tile. It has no unit.`);
+                return;
+            }
+            // Highlight selected unit
+            unhighlightAllTiles();
+            highlightTile(tile, 'yellow');
+            // Show action buttons for the unit
+            showUnitActionButtons(tile.unit);
+        }
+
+        function showUnitActionButtons(unit) {
+            actionButtons.innerHTML = '';
+            const moveButton = document.createElement('button');
+            moveButton.textContent = 'Move';
+            moveButton.classList.add('action-button');
+            moveButton.style.backgroundColor = '#4CAF50'; // Green
+            moveButton.addEventListener('click', () => promptMoveAction(unit));
+            actionButtons.appendChild(moveButton);
+
+            const attackButton = document.createElement('button');
+            attackButton.textContent = 'Attack';
+            attackButton.classList.add('action-button');
+            attackButton.style.backgroundColor = '#FF9800'; // Orange
+            attackButton.disabled = unit.power < 1; // Disable if no power units
+            attackButton.addEventListener('click', () => promptAttackAction(unit));
+            actionButtons.appendChild(attackButton);
+
+            const reloadButton = document.createElement('button');
+            reloadButton.textContent = 'Reload';
+            reloadButton.classList.add('action-button');
+            reloadButton.style.backgroundColor = '#9C27B0'; // Purple
+            reloadButton.addEventListener('click', () => {
+                planAction(unit.playerId - 1, unit, 'reload', null);
+                actionButtons.innerHTML = '';
+                unhighlightAllTiles();
+            });
+            actionButtons.appendChild(reloadButton);
+
+            // Add Cancel button
+            const cancelButton = document.createElement('button');
+            cancelButton.textContent = 'Cancel';
+            cancelButton.classList.add('action-button');
+            cancelButton.style.backgroundColor = '#757575'; // Grey
+            cancelButton.addEventListener('click', () => {
+                actionButtons.innerHTML = '';
+                unhighlightAllTiles();
+            });
+            actionButtons.appendChild(cancelButton);
+        }
+
+        function promptMoveAction(unit) {
+            actionButtons.innerHTML = '';
+            unhighlightAllTiles();
+            highlightTile(unit.tile, 'yellow');
+            const neighbors = getNeighbors(unit.tile.q, unit.tile.r);
+            neighbors.forEach(tile => {
+                if (!tile.unit) { // Can only move to empty tiles
+                    highlightTile(tile, 'yellow');
+                    tile.element.addEventListener('click', () => onMoveTileClick(tile, unit));
+                }
+            });
+            // Add Cancel button
+            const cancelButton = document.createElement('button');
+            cancelButton.textContent = 'Cancel';
+            cancelButton.classList.add('action-button');
+            cancelButton.style.backgroundColor = '#757575'; // Grey
+            cancelButton.addEventListener('click', () => {
+                actionButtons.innerHTML = '';
+                unhighlightAllTiles();
+            });
+            actionButtons.appendChild(cancelButton);
+        }
+
+        function promptAttackAction(unit) {
+            actionButtons.innerHTML = '';
+            unhighlightAllTiles();
+            highlightTile(unit.tile, 'yellow');
+            const neighbors = getNeighbors(unit.tile.q, unit.tile.r);
+            neighbors.forEach(tile => {
+                if (tile.unit && tile.owner !== unit.playerId) { // Can only attack enemy units
+                    highlightTile(tile, 'yellow');
+                    tile.element.addEventListener('click', () => onAttackTileClick(tile, unit));
+                }
+            });
+            // Add Cancel button
+            const cancelButton = document.createElement('button');
+            cancelButton.textContent = 'Cancel';
+            cancelButton.classList.add('action-button');
+            cancelButton.style.backgroundColor = '#757575'; // Grey
+            cancelButton.addEventListener('click', () => {
+                actionButtons.innerHTML = '';
+                unhighlightAllTiles();
+            });
+            actionButtons.appendChild(cancelButton);
+        }
+
+        function onMoveTileClick(targetTile, unit) {
+            planAction(unit.playerId - 1, unit, 'move', targetTile);
+            actionButtons.innerHTML = '';
+            unhighlightAllTiles();
+        }
+
+        function onAttackTileClick(targetTile, unit) {
+            planAction(unit.playerId - 1, unit, 'attack', targetTile);
+            actionButtons.innerHTML = '';
+            unhighlightAllTiles();
+        }
+
+        function planAction(playerIndex, unit, action, targetTile) {
+            // Check if the unit has already planned an action this turn
+            const existingAction = game.playerActions[playerIndex].find(a => a.unit === unit);
+            if (existingAction) {
+                // Replace the existing action
+                existingAction.action = action;
+                existingAction.targetTile = targetTile;
+            } else {
+                game.playerActions[playerIndex].push({
+                    unit: unit,
+                    action: action,
+                    targetTile: targetTile
+                });
+            }
+            log(`Player ${playerIndex + 1} planned to ${action}${targetTile ? ` to (${targetTile.q}, ${targetTile.r})` : ''} from (${unit.tile.q}, ${unit.tile.r}).`);
+        }
+
+        function executeTurn() {
+            // Check if all players have planned actions for all their units
+            if (!areAllPlayersReady()) {
+                alert('All players must plan actions for all their units before executing the turn.');
+                return;
+            }
+
+            log(`\n--- Turn ${game.turn} Execution ---`);
+
+            // Process all movement actions first
+            const allMoveActions = [];
+            for (let i = 0; i < NUM_PLAYERS; i++) {
+                game.playerActions[i].forEach(actionData => {
+                    if (actionData.action === 'move') {
+                        allMoveActions.push(actionData);
+                    }
+                });
+            }
+            processMovementActions(allMoveActions, () => {
+                // After movements, process reload actions
+                for (let i = 0; i < NUM_PLAYERS; i++) {
+                    game.playerActions[i].forEach(actionData => {
+                        if (actionData.action === 'reload') {
+                            actionData.unit.power += 1;
+                            log(`Player ${i + 1}'s unit at (${actionData.unit.tile.q}, ${actionData.unit.tile.r}) reloaded. Power is now ${actionData.unit.power}.`);
+                        }
+                    });
+                }
+
+                // After reloads, process attack actions
+                const allAttackActions = [];
+                for (let i = 0; i < NUM_PLAYERS; i++) {
+                    game.playerActions[i].forEach(actionData => {
+                        if (actionData.action === 'attack') {
+                            allAttackActions.push(actionData);
+                        }
+                    });
+                }
+                processAttackActions(allAttackActions, () => {
+                    // Clear actions for next turn
+                    game.playerActions = Array(NUM_PLAYERS).fill(null).map(() => []);
+                    // Clear trails and fires
+                    game.trails.forEach(trail => svg.removeChild(trail));
+                    game.trails = [];
+                    game.fires.forEach(fire => svg.removeChild(fire));
+                    game.fires = [];
+                    updateDisplay();
+                    game.turn += 1;
+                    log(`--- Turn ${game.turn} ---`);
+                });
+            });
+        }
+
+        function areAllPlayersReady() {
+            for (let i = 0; i < NUM_PLAYERS; i++) {
+                const player = game.players[i];
+                const actions = game.playerActions[i];
+                const unitCount = player.units.length;
+                const actionCount = actions.length;
+
+                // Check if the number of actions equals the number of units
+                if (actionCount !== unitCount) {
+                    return false;
+                }
+
+                // Additionally, ensure each unit has one action
+                const unitsWithActions = new Set(actions.map(a => a.unit));
+                if (unitsWithActions.size !== unitCount) {
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        function processMovementActions(movementActions, callback) {
+            if (movementActions.length === 0) {
+                callback();
+                return;
+            }
+
+            // Map target tiles to units attempting to move into them
+            const targetMap = {};
+            movementActions.forEach(actionData => {
+                const key = `${actionData.targetTile.q},${actionData.targetTile.r}`;
+                if (!targetMap[key]) {
+                    targetMap[key] = [];
+                }
+                targetMap[key].push(actionData.unit);
+            });
+
+            // Determine which movements succeed
+            const successfulMovements = [];
+            const failedMovements = [];
+
+            for (const key in targetMap) {
+                const units = targetMap[key];
+                if (units.length === 1) {
+                    successfulMovements.push({ unit: units[0], targetKey: key });
+                } else {
+                    // Multiple units attempting to move into the same tile
+                    units.forEach(unit => {
+                        failedMovements.push(unit);
+                        log(`Conflict at (${key}): Player ${unit.playerId}'s movement failed due to multiple units targeting the same tile.`);
+                    });
+                }
+            }
+
+            // Move successful units
+            let movementsCompleted = 0;
+            if (successfulMovements.length > 0) {
+                successfulMovements.forEach(moveData => {
+                    const { unit } = moveData;
+                    const [q, r] = moveData.targetKey.split(',').map(Number);
+                    const targetTile = game.grid[`${q},${r}`];
+                    moveUnit(unit, targetTile, () => {
+                        movementsCompleted++;
+                        if (movementsCompleted === successfulMovements.length) {
+                            updateDisplay(); // Update display after all movements
+                            callback();
+                        }
+                    });
+                });
+            } else {
+                updateDisplay();
+                callback();
+            }
+        }
+
+        function processAttackActions(attackActions, callback) {
+            if (attackActions.length === 0) {
+                callback();
+                return;
+            }
+
+            // To handle simultaneous attacks, process all attacks without immediate resolution
+            const attackResults = [];
+
+            attackActions.forEach(actionData => {
+                const attacker = actionData.unit;
+                const targetTile = actionData.targetTile;
+                if (attacker.power < 1) {
+                    log(`Player ${attacker.playerId}'s unit at (${attacker.tile.q}, ${attacker.tile.r}) does not have enough power to attack.`);
+                    return;
+                }
+                attacker.power -= 1; // Consume one power unit
+
+                const defender = targetTile.unit;
+                if (defender && defender.playerId !== attacker.playerId) {
+                    // Determine the outcome based on strength
+                    if (attacker.strength >= defender.strength) {
+                        attackResults.push({
+                            attacker: attacker,
+                            defender: defender,
+                            outcome: 'attacker_wins'
+                        });
+                    } else {
+                        attackResults.push({
+                            attacker: attacker,
+                            defender: defender,
+                            outcome: 'defender_wins'
+                        });
+                    }
+                } else {
+                    // Attack an empty tile - capture it
+                    attackResults.push({
+                        attacker: attacker,
+                        defender: null,
+                        outcome: 'capture'
+                    });
+                }
+            });
+
+            // Resolve all attack results
+            attackResults.forEach(result => {
+                const { attacker, defender, outcome } = result;
+                const targetTile = result.defender ? result.defender.tile : result.attacker.tile; // For capture, target is the tile being attacked
+                const targetPixel = hexToPixel(targetTile.q, targetTile.r);
+
+                // Create fire icon with attacker's color
+                const fireIcon = document.createElementNS(svgNS, 'circle');
+                fireIcon.setAttribute('cx', targetPixel.x);
+                fireIcon.setAttribute('cy', targetPixel.y);
+                fireIcon.setAttribute('r', TILE_SIZE / 2 - 15);
+                fireIcon.setAttribute('class', 'fire-icon');
+                fireIcon.setAttribute('fill', getPlayerColor(attacker.playerId)); // Set fire color based on attacker
+                svg.appendChild(fireIcon);
+                game.fires.push(fireIcon);
+
+                if (outcome === 'attacker_wins') {
+                    if (defender) {
+                        defender.tile.unit = null;
+                        defender.tile.owner = null;
+                        log(`Player ${attacker.playerId} defeated Player ${defender.playerId} at (${defender.tile.q}, ${defender.tile.r}).`);
+                        // Capture the tile
+                        defender.tile.owner = attacker.playerId;
+                        // Move the attacker to the defender's tile
+                        attacker.tile.unit = null; // Attacker moves out after attacking
+                        attacker.tile.owner = null;
+                        attacker.tile = defender.tile;
+                        defender.tile.unit = attacker;
+                        log(`Player ${attacker.playerId}'s unit moved to (${defender.tile.q}, ${defender.tile.r}).`);
+                    }
+                } else if (outcome === 'defender_wins') {
+                    if (defender) {
+                        attacker.tile.unit = null;
+                        attacker.tile.owner = null;
+                        log(`Player ${attacker.playerId}'s unit was defeated by Player ${defender.playerId} at (${defender.tile.q}, ${defender.tile.r}).`);
+                        // Defender remains in place
+                    }
+                } else if (outcome === 'capture') {
+                    const [q, r] = [targetTile.q, targetTile.r];
+                    targetTile.owner = attacker.playerId;
+                    log(`Player ${attacker.playerId} captured tile at (${q}, ${r}).`);
+                }
+            });
+
+            callback();
+        }
+
+        function moveUnit(unit, targetTile, callback) {
+            const currentTile = unit.tile;
+            const { x: fromX, y: fromY } = hexToPixel(currentTile.q, currentTile.r);
+            const { x: toX, y: toY } = hexToPixel(targetTile.q, targetTile.r);
+
+            // Mark the unit as moving
+            unit.isMoving = true;
+
+            currentTile.unit = null;
+            targetTile.unit = unit;
+            unit.tile = targetTile;
+            targetTile.owner = unit.playerId;
+
+            // Create trail line
+            const trailLine = document.createElementNS(svgNS, 'line');
+            trailLine.setAttribute('x1', fromX);
+            trailLine.setAttribute('y1', fromY);
+            trailLine.setAttribute('x2', toX);
+            trailLine.setAttribute('y2', toY);
+            trailLine.setAttribute('class', 'trail-line');
+            svg.appendChild(trailLine);
+            // Store the trail to remove it at the beginning of the next turn
+            game.trails.push(trailLine);
+
+            // Animation
+            const unitCircle = document.createElementNS(svgNS, 'circle');
+            unitCircle.setAttribute('cx', fromX);
+            unitCircle.setAttribute('cy', fromY);
+            unitCircle.setAttribute('r', TILE_SIZE / 2 - 5);
+            unitCircle.setAttribute('fill', getPlayerColor(unit.playerId));
+            unitCircle.setAttribute('class', 'unit unit-circle');
+            svg.appendChild(unitCircle);
+
+            // Display power units as text
+            const unitText = document.createElementNS(svgNS, 'text');
+            unitText.setAttribute('x', fromX);
+            unitText.setAttribute('y', fromY + 5);
+            unitText.textContent = unit.power;
+            unitText.setAttribute('class', 'unit unit-text');
+            svg.appendChild(unitText);
+
+            const duration = 500; // Animation duration in milliseconds
+            const startTime = performance.now();
+
+            function animate() {
+                const currentTime = performance.now();
+                const elapsedTime = currentTime - startTime;
+                const t = Math.min(elapsedTime / duration, 1); // Normalized time [0,1]
+
+                const currentX = fromX + (toX - fromX) * t;
+                const currentY = fromY + (toY - fromY) * t;
+
+                unitCircle.setAttribute('cx', currentX);
+                unitCircle.setAttribute('cy', currentY);
+                unitText.setAttribute('x', currentX);
+                unitText.setAttribute('y', currentY + 5);
+
+                if (t < 1) {
+                    requestAnimationFrame(animate);
+                } else {
+                    // Animation complete
+                    svg.removeChild(unitCircle);
+                    svg.removeChild(unitText);
+                    unit.isMoving = false;
+                    if (callback) callback();
+                }
+            }
+
+            animate();
+
+            log(`Player ${unit.playerId} moved to (${targetTile.q}, ${targetTile.r})`);
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,458 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Hex Conquest</title>
+    <!-- Include Brython -->
+    <script type="text/javascript" src="https://cdn.jsdelivr.net/npm/brython@3.11.0/brython.min.js"></script>
+    <script type="text/javascript" src="https://cdn.jsdelivr.net/npm/brython@3.11.0/brython_stdlib.js"></script>
+    <style>
+        /* Basic styles for the game */
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f0f0f0;
+        }
+        #game-container {
+            width: 100%;
+            max-width: 800px;
+            margin: auto;
+            text-align: center;
+        }
+        #game-board {
+            position: relative;
+            width: 800px; /* Set a fixed width */
+            height: 600px; /* Adjust height as needed */
+            margin-bottom: 20px;
+            margin-top: 20px;
+            border: 1px solid #ccc;
+            overflow: hidden;
+            background-color: #fff;
+        }
+        .hex-tile {
+            width: 90px;
+            height: 104px;
+            margin: 0;
+            position: absolute;
+        }
+        .unit {
+            font-weight: bold;
+            font-size: 18px;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            pointer-events: none;
+        }
+        #log {
+            height: 200px;
+            overflow-y: scroll;
+            border: 1px solid #ccc;
+            padding: 5px;
+            text-align: left;
+            background-color: #fff;
+        }
+        #next-turn {
+            padding: 10px 20px;
+            font-size: 16px;
+        }
+        h1 {
+            margin-top: 40px;
+        }
+    </style>
+</head>
+<body onload="brython()">
+    <div id="game-container">
+        <h1>Hex Conquest</h1>
+        <div id="game-board"></div>
+        <button id="next-turn">Next Turn</button>
+        <div id="log"></div>
+    </div>
+
+    <script type="text/python">
+    from browser import document, html, svg, alert, window
+    import random
+    import math
+
+    # Define constants
+    NUM_PLAYERS = 2
+    GRID_SIZE = 3  # Size of the hex grid (radius)
+    MAX_TURNS = 10
+
+    # Tile dimensions
+    TILE_WIDTH = 90  # Width of a tile
+    TILE_HEIGHT = 104  # Height of a tile
+
+    class HexTile:
+        def __init__(self, q, r, terrain='plain', resource=None):
+            self.q = q  # Axial coordinate q
+            self.r = r  # Axial coordinate r
+            self.s = -q - r  # Derived coordinate s (q + r + s = 0)
+            self.terrain = terrain
+            self.resource = resource
+            self.unit = None  # The unit occupying the tile
+            self.structure = None  # Any structures built on the tile
+            self.owner = None  # Which player controls the tile
+            self.element = html.DIV(Class='hex-tile', Id=f'tile-{q}-{r}')
+            self.create_hexagon()
+            self.update_display()
+
+        def create_hexagon(self):
+            self.svg_element = svg.svg(width=TILE_WIDTH, height=TILE_HEIGHT)
+            points = self.get_hex_points()
+            self.polygon = svg.polygon(points=points)
+            self.svg_element <= self.polygon
+            self.element <= self.svg_element
+
+        def get_hex_points(self):
+            # Calculate the corner points of the hexagon
+            w = TILE_WIDTH
+            h = TILE_HEIGHT
+            hw = w / 2
+            hh = h / 2
+            points = [
+                (hw, 0),
+                (w, hh * 0.5),
+                (w, hh * 1.5),
+                (hw, h),
+                (0, hh * 1.5),
+                (0, hh * 0.5),
+            ]
+            return ' '.join(f'{x},{y}' for x, y in points)
+
+        def update_display(self):
+            # Set the fill color based on ownership
+            if self.owner == 1:
+                fill_color = '#aaf'
+            elif self.owner == 2:
+                fill_color = '#faa'
+            else:
+                fill_color = '#e0e0e0'  # Default color
+
+            # Update the polygon attributes
+            self.polygon.setAttribute('fill', fill_color)
+            self.polygon.setAttribute('stroke', '#000')
+            self.polygon.setAttribute('stroke-width', '5')
+
+            # Update the unit display
+            if self.unit:
+                if not self.element.get(selector='.unit'):
+                    self.element <= html.SPAN('U', Class='unit')
+            else:
+                unit_elements = self.element.get(selector='.unit')
+                if unit_elements:
+                    for unit_element in unit_elements:
+                        unit_element.remove()
+
+    class Unit:
+        def __init__(self, player_id, strength=1):
+            self.player_id = player_id
+            self.strength = strength
+
+        def __repr__(self):
+            return f"Unit(Player {self.player_id}, Strength: {self.strength})"
+
+    class Player:
+        def __init__(self, player_id, start_tile, game):
+            self.player_id = player_id
+            self.units = []
+            self.resources = 0
+            self.start_tile = start_tile
+            self.controlled_tiles = [start_tile]
+            self.actions = {}  # Actions planned for the turn
+            self.game = game
+
+        def plan_actions(self):
+            self.actions = {}
+            for unit in self.units:
+                # For the web version, we will prompt the user for actions
+                if self.player_id == 1:
+                    tile = self.game.find_unit_tile(unit)
+                    choice = window.prompt(f"Player {self.player_id}, choose action for Unit at ({tile.q}, {tile.r}):\n1. Move\n2. Attack\n3. Build Structure\n(Enter the number of your choice)", "1")
+                    if choice == '1':
+                        neighbors = self.game.get_neighbors(tile.q, tile.r)
+                        options = '\n'.join([f"{i+1}. Move to ({n.q}, {n.r})" for i, n in enumerate(neighbors)])
+                        move_choice = window.prompt(f"Choose where to move:\n{options}\n(Enter the number of your choice)", "1")
+                        try:
+                            idx = int(move_choice) -1
+                            if 0 <= idx < len(neighbors):
+                                self.actions[unit] = ('move', neighbors[idx])
+                            else:
+                                self.actions[unit] = ('wait', None)
+                                alert("Invalid move choice. Action skipped.")
+                        except:
+                            self.actions[unit] = ('wait', None)
+                            alert("Invalid input. Action skipped.")
+                    elif choice == '2':
+                        # Attack action
+                        neighbors = self.game.get_neighbors(tile.q, tile.r)
+                        options = '\n'.join([f"{i+1}. Attack tile at ({n.q}, {n.r})" for i, n in enumerate(neighbors)])
+                        attack_choice = window.prompt(f"Choose a tile to attack:\n{options}\n(Enter the number of your choice)", "1")
+                        try:
+                            idx = int(attack_choice) -1
+                            if 0 <= idx < len(neighbors):
+                                target_tile = neighbors[idx]
+                                self.actions[unit] = ('attack', target_tile)
+                            else:
+                                self.actions[unit] = ('wait', None)
+                                alert("Invalid attack choice. Action skipped.")
+                        except:
+                            self.actions[unit] = ('wait', None)
+                            alert("Invalid input. Action skipped.")
+                    elif choice == '3':
+                        self.actions[unit] = ('build', None)
+                    else:
+                        self.actions[unit] = ('wait', None)
+                else:
+                    # AI player
+                    action = random.choice(['move', 'attack', 'build'])
+                    current_tile = self.game.find_unit_tile(unit)
+                    if action == 'move':
+                        neighbors = self.game.get_neighbors(current_tile.q, current_tile.r)
+                        if neighbors:
+                            destination = random.choice(neighbors)
+                            self.actions[unit] = ('move', destination)
+                        else:
+                            self.actions[unit] = ('wait', None)
+                    elif action == 'attack':
+                        neighbors = self.game.get_neighbors(current_tile.q, current_tile.r)
+                        target_tile = random.choice(neighbors)
+                        self.actions[unit] = ('attack', target_tile)
+                    else:
+                        self.actions[unit] = (action, None)
+
+    class Game:
+        def __init__(self):
+            self.grid = self.create_grid()
+            self.players = self.create_players()
+            self.turn = 1
+            self.log_element = document['log']
+            self.update_display()
+
+        def create_grid(self):
+            grid = {}
+            board = document['game-board']
+            board.style.position = 'relative'  # Ensure game-board is relative
+
+            dx = TILE_WIDTH  # Horizontal distance between columns
+            dy = TILE_HEIGHT * 0.75  # Vertical distance between rows
+
+            # Calculate center of the game board
+            board_width = board.offsetWidth
+            board_height = board.offsetHeight
+            center_x = board_width / 2 - TILE_WIDTH / 2
+            center_y = board_height / 2 - TILE_HEIGHT / 2
+
+            for q in range(-GRID_SIZE + 1, GRID_SIZE):
+                for r in range(-GRID_SIZE + 1, GRID_SIZE):
+                    s = -q - r
+                    if abs(s) < GRID_SIZE:
+                        tile = HexTile(q, r)
+                        grid[(q, r)] = tile
+                        # Calculate pixel positions relative to center tile at (0, 0)
+                        x = center_x + dx * (q + r / 2)
+                        y = center_y + dy * r
+                        tile.element.style.left = f"{x}px"
+                        tile.element.style.top = f"{y}px"
+                        board <= tile.element
+            return grid
+
+        def create_players(self):
+            players = []
+            start_positions = [(0, -GRID_SIZE + 1), (0, GRID_SIZE - 1)]
+            for i in range(NUM_PLAYERS):
+                start_q, start_r = start_positions[i]
+                start_tile = self.grid[(start_q, start_r)]
+                player = Player(i + 1, start_tile, self)
+                unit = Unit(player_id=player.player_id)
+                start_tile.unit = unit
+                player.units.append(unit)
+                start_tile.owner = player.player_id
+                start_tile.update_display()
+                players.append(player)
+            return players
+
+        def get_neighbors(self, q, r):
+            # Returns the neighboring tiles in the hex grid
+            directions = [
+                (+1, 0), (0, +1), (-1, +1),
+                (-1, 0), (0, -1), (+1, -1),
+            ]
+            neighbors = []
+            for dq, dr in directions:
+                nq, nr = q + dq, r + dr
+                if (nq, nr) in self.grid:
+                    neighbors.append(self.grid[(nq, nr)])
+            return neighbors
+
+        def resolve_actions(self):
+            # Collect all actions
+            all_actions = {}
+            for player in self.players:
+                player.plan_actions()
+                all_actions.update(player.actions)
+
+            # Resolve actions in order: move, attacks, build, combat
+            self.resolve_movement(all_actions)
+            self.resolve_attacks(all_actions)
+            self.resolve_building(all_actions)
+            self.resolve_combat()
+            self.update_display()
+            self.turn +=1
+            if self.check_victory_conditions() or self.turn > MAX_TURNS:
+                self.determine_winner()
+                document['next-turn'].attrs['disabled'] = True
+
+        def resolve_movement(self, actions):
+            # First, we need to keep track of units that have moved
+            moved_units = {}
+            for unit, action_data in actions.items():
+                action, target = action_data
+                if action == 'move' and target:
+                    current_tile = self.find_unit_tile(unit)
+                    if target.unit is None:
+                        self.log(f"{unit} moves from ({current_tile.q}, {current_tile.r}) to ({target.q}, {target.r})")
+                        target.unit = unit
+                        current_tile.unit = None
+                        # Update ownership if moving into neutral or unowned tile
+                        if target.owner != unit.player_id:
+                            target.owner = unit.player_id
+                        current_tile.update_display()
+                        target.update_display()
+                        moved_units[unit] = target
+                    else:
+                        self.log(f"{unit} cannot move to ({target.q}, {target.r}) as it is occupied.")
+                        moved_units[unit] = current_tile  # Unit stays in place
+                else:
+                    current_tile = self.find_unit_tile(unit)
+                    moved_units[unit] = current_tile
+            # Update units' positions for the next phase
+            self.unit_positions = moved_units
+
+        def resolve_attacks(self, actions):
+            for unit, action_data in actions.items():
+                action, target_tile = action_data
+                if action == 'attack' and target_tile:
+                    # Get the unit's position after movement
+                    attacker_tile = self.unit_positions.get(unit, self.find_unit_tile(unit))
+                    # Check if target tile is adjacent to attacker's new position
+                    neighbors = self.get_neighbors(attacker_tile.q, attacker_tile.r)
+                    if target_tile in neighbors:
+                        # Check if there's an enemy unit on the target tile
+                        if target_tile.unit and target_tile.unit.player_id != unit.player_id:
+                            self.handle_attack(unit, target_tile.unit)
+                        else:
+                            self.log(f"{unit} attacked ({target_tile.q}, {target_tile.r}), but no enemy unit was present.")
+                    else:
+                        self.log(f"{unit} cannot attack tile at ({target_tile.q}, {target_tile.r}) - not adjacent after movement.")
+                # Else, no attack action or invalid target; do nothing
+
+        def handle_attack(self, attacker, defender):
+            # Simple combat resolution: higher strength wins
+            attacker_tile = self.find_unit_tile(attacker)
+            defender_tile = self.find_unit_tile(defender)
+            if attacker.strength >= defender.strength:
+                self.log(f"{attacker} defeats {defender} in attack.")
+                defender_player = self.get_player_by_id(defender.player_id)
+                defender_player.units.remove(defender)
+                defender_tile.unit = None  # Defender is removed
+                defender_tile.update_display()
+            else:
+                self.log(f"{attacker} attacks {defender} but is defeated.")
+                attacker_player = self.get_player_by_id(attacker.player_id)
+                attacker_player.units.remove(attacker)
+                attacker_tile.unit = None  # Attacker is removed
+                attacker_tile.update_display()
+            # Note: Units do not move during attacks in this version
+
+        def resolve_building(self, actions):
+            for unit, action_data in actions.items():
+                action, _ = action_data
+                if action == 'build':
+                    player = self.get_player_by_id(unit.player_id)
+                    if player.resources >= 1:
+                        tile = self.find_unit_tile(unit)
+                        if tile.structure is None:
+                            tile.structure = 'Fort'
+                            player.resources -= 1
+                            self.log(f"{unit} builds a Fort at ({tile.q}, {tile.r})")
+                            tile.update_display()
+                        else:
+                            self.log(f"{unit} cannot build at ({tile.q}, {tile.r}) as there is already a structure.")
+                    else:
+                        self.log(f"{unit} does not have enough resources to build.")
+
+        def resolve_combat(self):
+            # Check for tiles with multiple units
+            tile_units = {}
+            for tile in self.grid.values():
+                if tile.unit:
+                    key = (tile.q, tile.r)
+                    if key not in tile_units:
+                        tile_units[key] = []
+                    tile_units[key].append(tile.unit)
+
+            for units in tile_units.values():
+                if len(units) > 1:
+                    self.handle_combat(units)
+
+        def handle_combat(self, units):
+            self.log(f"Combat between {units}")
+            # Simple combat resolution: highest strength wins
+            units.sort(key=lambda u: u.strength, reverse=True)
+            winner = units[0]
+            losers = units[1:]
+            for loser in losers:
+                player = self.get_player_by_id(loser.player_id)
+                player.units.remove(loser)
+                self.log(f"{loser} is defeated")
+                tile = self.find_unit_tile(loser)
+                tile.unit = None
+                tile.update_display()
+            self.log(f"{winner} wins the combat")
+
+        def find_unit_tile(self, unit):
+            for tile in self.grid.values():
+                if tile.unit == unit:
+                    return tile
+            return None
+
+        def get_player_by_id(self, player_id):
+            for player in self.players:
+                if player.player_id == player_id:
+                    return player
+            return None
+
+        def update_display(self):
+            for tile in self.grid.values():
+                tile.update_display()
+
+        def log(self, message):
+            self.log_element <= html.P(message)
+
+        def check_victory_conditions(self):
+            # Check if any player has no units left
+            active_players = [p for p in self.players if p.units]
+            if len(active_players) <= 1:
+                return True
+            return False
+
+        def determine_winner(self):
+            # Determine the winner based on units remaining
+            scores = {}
+            for player in self.players:
+                scores[player.player_id] = len(player.units)
+            winner = max(scores, key=scores.get)
+            self.log(f"\nGame Over! Player {winner} wins with {scores[winner]} units remaining.")
+
+    # Initialize the game
+    game = Game()
+
+    # Define the next turn function
+    def next_turn(ev):
+        game.resolve_actions()
+
+    # Bind the next turn function to the button
+    document['next-turn'].bind('click', next_turn)
+    </script>
+</body>
+</html>

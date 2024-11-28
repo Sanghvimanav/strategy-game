@@ -1,0 +1,1445 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Hex Conquest</title>
+    <style>
+        /* Basic Styles */
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f0f0f0;
+            margin: 0;
+            overflow: hidden;
+        }
+        #game-container {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+        }
+        .action-buttons, .control-buttons, .color-selection, .log-container {
+            position: absolute;
+            background-color: rgba(255, 255, 255, 0.95);
+            padding: 10px;
+            border-radius: 5px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.3);
+            z-index: 2000; /* Higher z-index to ensure visibility */
+        }
+        /* Control Buttons Container */
+        .control-buttons {
+            top: 10px;
+            right: 10px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px; /* Space between buttons */
+            width: 150px; /* Fixed width for consistency */
+        }
+        /* Turn Counter Styling */
+        .turn-counter {
+            text-align: center;
+            font-size: 16px;
+            font-weight: bold;
+            padding: 10px;
+        }
+
+        /* Color Selection */
+        .color-selection {
+            top: 10px;
+            left: 220px;
+            z-index: 1002; /* Higher than control-buttons */
+            padding: 15px;
+            border-radius: 8px;
+            max-width: 400px;
+            display: none; /* Hidden initially */
+        }
+        /* Log Container */
+        .log-container {
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            max-height: 150px;
+            overflow-y: auto;
+            background-color: #fff;
+            padding: 5px;
+            box-sizing: border-box;
+            font-size: 14px;
+            border-top: 1px solid #ccc;
+        }
+        /* Action Buttons Styling */
+        .action-button {
+            padding: 10px 0; /* Vertical padding for consistent height */
+            font-size: 14px;
+            cursor: pointer;
+            border: none;
+            border-radius: 4px;
+            color: #fff;
+            transition: opacity 0.3s;
+            width: 100%;
+            text-align: center; /* Center text horizontally */
+        }
+        .action-button:hover:not(:disabled) {
+            opacity: 0.8;
+        }
+        .action-button:disabled {
+            cursor: not-allowed;
+            opacity: 0.5;
+        }
+        /* SVG Styling */
+        svg {
+            width: 100%;
+            height: 100%;
+        }
+        .hex {
+            stroke: #000;
+            stroke-width: 2;
+            cursor: pointer;
+            transition: fill 0.3s, stroke 0.3s;
+        }
+        .hex:hover {
+            fill: #d0d0d0;
+        }
+        .hex.highlighted {
+            stroke-width: 5;
+        }
+        .unit {
+            pointer-events: none;
+        }
+        .unit-circle {
+            stroke: #000;
+            stroke-width: 1;
+        }
+        .unit-text {
+            font-size: 14px; /* Increased font size for better visibility */
+            font-weight: bold;
+            fill: #fff;
+            text-anchor: middle;
+            pointer-events: none;
+        }
+        .trail-line {
+            stroke: rgba(0, 0, 0, 0.5);
+            stroke-width: 2;
+            stroke-dasharray: 4;
+        }
+        .fire-icon {
+            pointer-events: none;
+            opacity: 0.8;
+            transition: opacity 0.5s, r 0.5s;
+            stroke: #000; /* Black stroke for visibility */
+            stroke-width: 1;
+        }
+        /* Styles for Color Selection */
+        .color-buttons {
+            display: flex;
+            flex-direction: row;
+            gap: 10px; /* Space between buttons */
+            flex-wrap: wrap; /* Wrap to next line if necessary */
+            margin-top: 10px;
+        }
+        .selected-color {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-top: 10px;
+        }
+        .selected-color span {
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            display: inline-block;
+            border: 2px solid #000;
+        }
+        .current-player {
+            margin-bottom: 10px;
+            font-weight: bold;
+        }
+        .trail-line {
+            stroke: rgba(0, 0, 0, 0.5);
+            stroke-width: 2;
+            stroke-dasharray: 4;
+        }
+
+        /* Units Panel Styling */
+        .units-panel {
+            position: absolute; /* Ensure it's positioned relative to the game-container */
+            top: 10px;
+            left: 10px;
+            width: 200px;
+            max-height: 400px;
+            overflow-y: auto;
+            background-color: rgba(255, 255, 255, 0.95);
+            padding: 10px;
+            border-radius: 5px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.3);
+            z-index: 1001; /* Above game board but below modals */
+        }
+        .units-panel h3 {
+            margin-top: 0;
+            text-align: center;
+            font-size: 16px;
+            border-bottom: 1px solid #ccc;
+            padding-bottom: 5px;
+        }
+        #units-list {
+            list-style-type: none;  /* Remove bullet points */
+            padding: 0;  /* Remove padding */
+            margin: 0;   /* Remove margin */
+        }       
+        .unit-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 5px;
+            margin: 5px 0;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            background-color: #f9f9f9;
+        }
+        .unit-item.your-unit {
+            background-color: #e0f7fa; /* Light cyan for player's units */
+            cursor: pointer;
+        }
+        .unit-item.other-unit {
+            background-color: #f1f1f1;
+            color: #888;
+        }
+        .unit-item.selected {
+            border: 2px solid #2196F3;
+            background-color: #b3e5fc; /* Slightly darker blue */
+        }
+        .unit-item.disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+        .attack-line {
+            /*stroke: rgba(255, 0, 0, 0.8);  Red color for attacks */
+            stroke-width: 3;
+            stroke-dasharray: 5,5;
+        }
+        .color-indicator {
+            width: 15px;              /* Adjusted size for better visibility */
+            height: 15px;
+            border-radius: 20%;       /* Makes it a perfect circle */
+            display: inline-block;
+            margin-right: 5px;        /* Space between the indicator and text */
+        }
+    </style>
+</head>
+<body>
+    <div id="game-container"></div>
+
+    <script>
+        // Define constants
+        const NUM_PLAYERS = 2;
+        const TILE_SIZE = 40; // Tile size
+
+        const gameContainer = document.getElementById('game-container');
+
+        // Create SVG element for the game board
+        const svgNS = "http://www.w3.org/2000/svg";
+        let svg = document.createElementNS(svgNS, 'svg');
+        gameContainer.appendChild(svg);
+
+        const GameState = {
+            Idle: 'Idle',
+            SelectingMoveTarget: 'SelectingMoveTarget',
+            SelectingAttackTarget: 'SelectingAttackTarget'
+        };
+
+        let currentState = GameState.Idle;
+
+
+        let gameState = {};
+        let playerId = null;
+        let playerColor = null;
+        let maxPower = 2; // Default max power
+        let unitsMap = {}; // Global mapping from tile key to unit
+        let selectedActionDef = null;
+
+
+        // Connect to the WebSocket server
+        const socket = new WebSocket('ws://127.0.0.1:8080'); //localhost
+        //const socket = new WebSocket('ws://192.168.0.182:8080'); // Joseph's IP
+        //const socket = new WebSocket('ws://192.168.0.106:8080'); // Manav's IP
+
+        // Listen for messages from the server
+        socket.addEventListener('message', function (event) {
+            const message = JSON.parse(event.data);
+            console.log('Message from server:', message);
+
+            if (message.type === 'welcome') {
+                playerId = message.playerId;
+                showColorSelection(message.availableColors);
+                
+                // If player 1, show game type selection options
+                if (playerId === 1) {
+                    console.log('playerId is 1')
+                    showGameTypeSelection(message.gameTypes);
+                }
+            }
+
+            if (message.type === 'actions_list') {
+                // Store the received actions list
+                window.ACTIONS = message.actions; // Make ACTIONS globally accessible
+                console.log('Received ACTIONS list from server:', ACTIONS);
+            }
+
+            if (message.type === 'game_type_selected') {
+                log(`Game type selected: ${message.gameType}`);
+            }
+
+            if (message.type === 'color_selected') {
+                playerColor = message.color;
+                log(`You selected color ${playerColor}. Waiting for other players...`);
+                //updatePlayerInfo(playerId, playerColor);  // Update player info after color selection
+            }
+
+            if (message.type === 'init') {
+                // Not used in this refactored version
+            }
+
+            if (message.type === 'update') {
+                // Update game state and render
+                gameState = message.state;
+                updateDisplay();
+                // Remove or hide the color selection UI after game starts
+                removeColorSelection();
+            }
+
+            if (message.type === 'game_over') {
+                updateDisplay();
+                handleGameOver(message.winner);
+            }
+
+            if (message.type === 'error') {
+                alert(`Error: ${message.message}`);
+            }
+        });
+
+        function showGameTypeSelection(gameTypes) {
+            const gameTypeSelectionContainer = document.createElement('div');
+            gameTypeSelectionContainer.classList.add('game-type-selection');
+            gameTypeSelectionContainer.innerHTML = '<h3>Select Game Type:</h3>';
+
+            gameTypes.forEach(gameType => {
+                const gameTypeButton = document.createElement('button');
+                gameTypeButton.textContent = `${gameType.name}: ${gameType.description}`;
+                gameTypeButton.addEventListener('click', () => {
+                    selectGameType(gameType.typeKey);
+                });
+
+                gameTypeSelectionContainer.appendChild(gameTypeButton);
+            });
+
+            // Set styles to position the container at the top center
+            Object.assign(gameTypeSelectionContainer.style, {
+                position: 'absolute',
+                top: '10px',
+                left: '50%',
+                transform: 'translateX(-50%)', // Center horizontally
+                zIndex: '2000',
+                backgroundColor: 'rgba(255, 255, 255, 0.95)',
+                padding: '15px',
+                borderRadius: '8px',
+                boxShadow: '0 0 10px rgba(0,0,0,0.3)',
+            });
+
+            document.body.appendChild(gameTypeSelectionContainer);
+        }
+
+
+        function selectGameType(gameTypeKey) {
+            socket.send(JSON.stringify({ type: 'game_type_selection', gameType: gameTypeKey }));
+            log(`Player 1 selected game type: ${gameTypeKey}`);
+            const gameTypeSelectionContainer = document.querySelector('.game-type-selection');
+            if (gameTypeSelectionContainer) {
+                gameTypeSelectionContainer.remove();
+            }
+        }
+
+        function removeColorSelection() {
+            const colorSelection = document.querySelector('.color-selection');
+            if (colorSelection) {
+                gameContainer.removeChild(colorSelection);
+            }
+        }
+
+        // Send color selection to the server
+        function sendColorSelection(color, numUnits, strength) {
+            const data = {
+                type: 'color_selection',
+                color: color,
+                numUnits: numUnits,  // Number of units selected
+                strength: strength   // Strength value selected
+            };
+
+            socket.send(JSON.stringify(data));
+        }
+
+        // Send player actions to the server
+        function sendPlayerActions(actions) {
+            socket.send(JSON.stringify({
+                type: 'action',
+                action: actions
+            }));
+
+            // Highlight the unit's border in green after an action is recorded
+            const unitItem = document.querySelector(`.unit-item[data-unit-id="${actions.unitId}"]`);
+            if (unitItem) {
+                unitItem.style.border = '2px solid green';  // Highlight the border in green
+            }
+        }
+
+        // Handle game over
+        function handleGameOver(winnerId) {
+            updateDisplay();
+            if (winnerId) {
+                alert(`Game Over! Player ${winnerId} wins the game!`);
+            } else {
+                alert(`Game Over! The game ended in a draw or due to turn limit.`);
+            }
+            // Optionally, display a restart button or disable further interactions
+        }
+
+        function createUnitsMap() {
+            const map = {};
+            gameState.players.forEach(player => {
+                player.units.forEach(unit => {
+                    const key = `${unit.tile.q},${unit.tile.r}`;
+                    if (!map[key]) {
+                        map[key] = [];
+                    }
+                    map[key].push(unit);
+                });
+            });
+            return map;
+        }
+
+        // Initialize the game on connection
+        function initGame() {
+            // Clear existing SVG and UI elements
+            if (svg) {
+                gameContainer.removeChild(svg);
+            }
+            svg = document.createElementNS(svgNS, 'svg');
+            gameContainer.appendChild(svg);
+            removeAllUIElements();
+
+            // Create the Units Panel for showing all units in the top-left corner
+            const unitsPanel = createContainer('units-panel', {
+                position: 'absolute',
+                top: '10px',
+                left: '10px',
+                width: '180px',
+                maxHeight: '400px',
+                overflowY: 'auto',
+                backgroundColor: 'rgba(255, 255, 255, 0.95)',
+                padding: '10px',
+                borderRadius: '5px',
+                boxShadow: '0 0 10px rgba(0, 0, 0, 0.3)',
+                zIndex: '1001', // Ensures it's above the game board
+            });
+
+            const panelTitle = document.createElement('h3');
+            panelTitle.textContent = 'All Units';
+            unitsPanel.appendChild(panelTitle);
+
+            const unitsList = document.createElement('ul');
+            unitsList.id = 'units-list'; // We will populate this dynamically
+            unitsPanel.appendChild(unitsList);
+
+            gameContainer.appendChild(unitsPanel);
+
+            // Create Control Buttons container
+            const controlButtonsContainer = createContainer('control-buttons', {
+                top: '10px',
+                right: '10px',
+                display: 'flex',
+                flexDirection: 'column',
+                //gap: '10px', // Space between buttons
+                width: '150px' // Fixed width for consistency
+            });
+            controlButtonsContainer.classList.add('control-buttons');
+
+            // Added Turn Counter
+            const turnCounter = document.createElement('div');
+            turnCounter.classList.add('turn-counter'); // Matches the CSS class
+            turnCounter.textContent = `Turn: 1`; // Initialize with Turn 1 or appropriate default
+            controlButtonsContainer.appendChild(turnCounter);
+            // End of Turn Counter
+
+            // Add Player Info element
+            const playerInfo = document.createElement('div');
+            playerInfo.classList.add('player-info');
+            playerInfo.style.textAlign = 'center'; // Center the text
+            playerInfo.style.fontSize = '16px';
+            playerInfo.style.fontWeight = 'bold';
+            playerInfo.style.padding = '10px';
+            controlButtonsContainer.appendChild(playerInfo);
+
+            // Create Restart Game button
+            const restartButton = document.createElement('button');
+            restartButton.textContent = 'Restart Game';
+            restartButton.classList.add('action-button');
+            restartButton.style.backgroundColor = '#f44336'; // Red
+            restartButton.addEventListener('click', () => {
+                restartGame();
+            });
+            controlButtonsContainer.appendChild(restartButton);
+
+            gameContainer.appendChild(controlButtonsContainer);
+
+            // Create Log container
+            const logContainer = createContainer('log-container', {
+                bottom: '0',
+                left: '0',
+                width: '100%',
+                maxHeight: '150px',
+                overflowY: 'auto',
+                backgroundColor: '#fff',
+                padding: '5px',
+                boxSizing: 'border-box',
+                fontSize: '14px',
+                borderTop: '1px solid #ccc'
+            });
+            gameContainer.appendChild(logContainer);
+            gameContainer.logContainer = logContainer;
+
+            // Create groups for different layers
+            const tileGroup = document.createElementNS(svgNS, 'g');  // Group for tiles
+            const lineGroup = document.createElementNS(svgNS, 'g');  // Group for trail and attack lines
+            const unitGroup = document.createElementNS(svgNS, 'g');  // Group for units
+
+            svg.appendChild(tileGroup);
+            svg.appendChild(lineGroup);
+            svg.appendChild(unitGroup);
+
+            // Store references to these groups
+            gameContainer.tileGroup = tileGroup;
+            gameContainer.lineGroup = lineGroup;
+            gameContainer.unitGroup = unitGroup;
+        }
+
+        // Update player info to include collected resources
+        function updatePlayerInfo(playerId, playerColor) {
+            const playerInfo = document.querySelector('.player-info');
+            if (playerInfo) {
+                const player = gameState.players.find(p => p.playerId === playerId);
+                const resources = player ? player.resources : {};  // Assuming `resources` is an object
+
+                // Create a string representation of the resources object
+                const resourceString = Object.keys(resources).map(resourceName => {
+                    return `${resourceName}: ${resources[resourceName]}`;
+                }).join(', ');
+
+                playerInfo.innerHTML = `
+                    <div style="display: flex; align-items: center;">
+                        <span class="color-indicator" style="background-color: ${playerColor};"></span>
+                        <strong>Player ${playerId}</strong>
+                    </div>
+                    <div style="margin-top: 5px;">
+                        Resources: ${resourceString || 'None'}
+                    </div>
+                `;
+            }
+        }
+
+
+        function removeAllUIElements() {
+            // Remove action-buttons
+            const actionButtons = document.querySelector('.action-buttons');
+            if (actionButtons) {
+                gameContainer.removeChild(actionButtons);
+            }
+
+            // Remove control-buttons
+            const controlButtons = document.querySelector('.control-buttons');
+            if (controlButtons) {
+                gameContainer.removeChild(controlButtons);
+            }
+
+            // Remove color-selection
+            const colorSelection = document.querySelector('.color-selection');
+            if (colorSelection) {
+                gameContainer.removeChild(colorSelection);
+            }
+
+            // Remove log-container
+            const logContainer = document.querySelector('.log-container');
+            if (logContainer) {
+                gameContainer.removeChild(logContainer);
+            }
+        }
+
+        // Function to restart the game
+        function restartGame() {
+            socket.send(JSON.stringify({ type: 'restart' }));
+            log("Requesting game restart...");
+        }
+
+        // Create a generic container
+        function createContainer(className, styles = {}) {
+            const container = document.createElement('div');
+            container.classList.add(className);
+            Object.assign(container.style, styles);
+            return container;
+        }
+
+        // Show color selection UI
+        function showColorSelection(availableColors) {
+            const colorSelectionContainer = createContainer('color-selection', {
+                top: '10px',
+                left: '10px',
+                display: 'flex',
+                flexDirection: 'column'
+            });
+
+            // Create and append title
+            const title = document.createElement('p');
+            title.innerHTML = '<strong>Select Your Color, Number of Units, and Unit Strength:</strong>';
+            colorSelectionContainer.appendChild(title);
+
+            // Create a container for color buttons with horizontal layout
+            const buttonsContainer = document.createElement('div');
+            buttonsContainer.classList.add('color-buttons');
+
+            availableColors.forEach((color) => {
+                const colorButton = document.createElement('button');
+                colorButton.classList.add('action-button');
+                colorButton.style.backgroundColor = color;
+                colorButton.style.width = '30px';
+                colorButton.style.height = '30px';
+                colorButton.style.padding = '0'; // Remove padding for uniform size
+                colorButton.setAttribute('data-color', color); // Store color in data attribute
+                colorButton.title = color;
+
+                colorButton.addEventListener('click', () => {
+                    const numUnits = parseInt(unitsInput.value);
+                    const strength = parseInt(strengthInput.value);
+
+                    // Validate strength before sending
+                    if (isNaN(strength) || strength < 1 || strength > 100) { // Assuming 1-10 is the valid range
+                        alert('Please enter a valid strength between 1 and 100.');
+                        return;
+                    }
+
+                    // Validate number of units
+                    if (isNaN(numUnits) || numUnits < 1 || numUnits > 5) { // Assuming max 5 units
+                        alert('Please enter a valid number of units between 1 and 5.');
+                        return;
+                    }
+
+                    sendColorSelection(color, numUnits, strength);
+                    // Highlight the selected color button
+                    colorButton.style.outline = '3px solid black';
+                    colorButton.style.border = '2px solid #000';
+
+                    // Disable other buttons
+                    buttonsContainer.querySelectorAll('button').forEach(btn => {
+                        if (btn !== colorButton) {
+                            btn.disabled = true;
+                            btn.style.opacity = 0.5;
+                        }
+                    });
+
+                    // Disable units and strength inputs after selection
+                    unitsInput.disabled = true;
+                    strengthInput.disabled = true;
+                });
+
+                buttonsContainer.appendChild(colorButton);
+            });
+
+            colorSelectionContainer.appendChild(buttonsContainer);
+
+            // Add Number of Units Selection
+            const unitsContainer = document.createElement('div');
+            unitsContainer.classList.add('units-selection');
+            unitsContainer.style.marginTop = '10px'; // Add some spacing
+
+            const unitsLabel = document.createElement('label');
+            unitsLabel.textContent = 'Number of Units: ';
+            unitsLabel.style.marginRight = '5px';
+
+            const unitsInput = document.createElement('input');
+            unitsInput.type = 'number';
+            unitsInput.min = '1';
+            unitsInput.max = '5'; // Define a reasonable maximum based on server constraints
+            unitsInput.value = '4'; // Default value
+            unitsInput.style.width = '50px';
+
+            unitsContainer.appendChild(unitsLabel);
+            unitsContainer.appendChild(unitsInput);
+
+            colorSelectionContainer.appendChild(unitsContainer);
+
+            // Add Unit Strength Selection
+            const strengthContainer = document.createElement('div');
+            strengthContainer.classList.add('strength-selection');
+            strengthContainer.style.marginTop = '10px'; // Add some spacing
+
+            const strengthLabel = document.createElement('label');
+            strengthLabel.textContent = 'Unit Strength: ';
+            strengthLabel.style.marginRight = '5px';
+
+            const strengthInput = document.createElement('input');
+            strengthInput.type = 'number';
+            strengthInput.min = '10';
+            strengthInput.max = '100'; // Assuming the maximum strength is 10
+            strengthInput.value = '100'; // Default value
+            strengthInput.style.width = '50px';
+
+            strengthContainer.appendChild(strengthLabel);
+            strengthContainer.appendChild(strengthInput);
+
+            colorSelectionContainer.appendChild(strengthContainer);
+
+            gameContainer.appendChild(colorSelectionContainer);
+        }
+
+
+        // Update the game display based on the game state
+        function updateDisplay() {
+            console.log("Updating display...");
+            clearSVG();
+
+            // Create unitsMap
+            unitsMap = createUnitsMap();
+
+            // Iterate over each tile
+            for (const key in gameState.grid) {
+                const tile = gameState.grid[key];
+                const { q, r } = tile;
+                const { x, y } = hexToPixel(q, r);
+                const points = polygonPoints(6, TILE_SIZE, x, y);
+
+                const hex = document.createElementNS(svgNS, 'polygon');
+                hex.setAttribute('points', points);
+                hex.setAttribute('class', 'hex');
+                hex.dataset.q = q;
+                hex.dataset.r = r;
+
+                //console.log(tile.color)
+                hex.setAttribute('fill', tile.color);  // Tile type color from server
+            
+                // Add event listener for player interaction
+                hex.addEventListener('click', handleTileClick);
+
+                // Append tile to the tile group
+                gameContainer.tileGroup.appendChild(hex);
+            }
+
+            // Render trailLines for movements
+            if (gameState.lastTurnMovements && gameState.lastTurnMovements.length > 0) {
+                gameState.lastTurnMovements.forEach(movement => {
+                    console.log(`Rendering trail line for Unit ${movement.unitId} from (${movement.from.q}, ${movement.from.r}) to (${movement.to.q}, ${movement.to.r})`);
+                    renderTrailLine(movement);
+                });
+            }
+
+            // Render attackLines for attacks
+            if (gameState.lastTurnAttacks && gameState.lastTurnAttacks.length > 0) {
+                gameState.lastTurnAttacks.forEach(attack => {
+                    console.log(`Rendering attack line for Player ${attack.attackerPlayerId} from (${attack.from.q}, ${attack.from.r}) to (${attack.to.q}, ${attack.to.r})`);
+                    renderAttackLine(attack);
+                });
+            }
+
+            // Group units by tile
+            const tileUnitsMap = {};
+            gameState.players.forEach(player => {
+                player.units.forEach(unit => {
+                    const key = `${unit.tile.q},${unit.tile.r}`;
+                    if (!tileUnitsMap[key]) {
+                        tileUnitsMap[key] = [];
+                    }
+                    tileUnitsMap[key].push(unit);
+                });
+            });
+
+            // Render all units per tile
+            for (const key in tileUnitsMap) {
+                const units = tileUnitsMap[key];
+                const [q, r] = key.split(',').map(Number);
+                const { x, y } = hexToPixel(q, r);
+                renderTileUnits(q, r, units, x, y);
+            }
+
+            // Update Turn Counter
+            const turnCounter = document.querySelector('.turn-counter');
+            if (turnCounter && typeof gameState.turn !== 'undefined') {
+                turnCounter.textContent = `Turn: ${gameState.turn}`;
+            }
+
+            if (gameState && gameState.players) {
+                    updatePlayerInfo(playerId, getPlayerColor(playerId));
+            }
+
+            // Update control buttons if necessary
+            updateControlButtons();
+        }
+
+        function renderTileUnits(q, r, units, x, y) {
+            const unitCount = units.length;
+
+            // Determine if multiple players are on the same tile
+            const uniquePlayers = new Set(units.map(unit => unit.playerId));
+            let fillColor = '#000'; // Default color (black)
+
+            if (uniquePlayers.size === 1) {
+                // Single player on the tile
+                const playerId = units[0].playerId;
+                fillColor = getPlayerColor(playerId);
+            } else {
+                // Multiple players on the tile - apply rainbow gradient
+                fillColor = 'url(#rainbowGradient)';
+            }
+
+            // Create the unit circle
+            const unitCircle = document.createElementNS(svgNS, 'circle');
+            unitCircle.setAttribute('cx', x);
+            unitCircle.setAttribute('cy', y);
+            unitCircle.setAttribute('r', TILE_SIZE / 3); // Adjusted radius for visibility
+            unitCircle.setAttribute('fill', fillColor);
+            unitCircle.setAttribute('class', 'unit unit-circle');
+
+            // Create the unit count text
+            const unitText = document.createElementNS(svgNS, 'text');
+            unitText.setAttribute('x', x);
+            unitText.setAttribute('y', y + 5); // Adjust for vertical centering
+            unitText.textContent = unitCount;
+            unitText.setAttribute('class', 'unit unit-text');
+
+            // Append unit elements to the unit group
+            gameContainer.unitGroup.appendChild(unitCircle);
+            gameContainer.unitGroup.appendChild(unitText);
+        }
+
+        function renderTrailLine(movement) {
+            const fromPixel = hexToPixel(movement.from.q, movement.from.r);
+            const toPixel = hexToPixel(movement.to.q, movement.to.r);
+
+            const trailLine = document.createElementNS(svgNS, 'line');
+            trailLine.setAttribute('x1', fromPixel.x);
+            trailLine.setAttribute('y1', fromPixel.y);
+            trailLine.setAttribute('x2', toPixel.x);
+            trailLine.setAttribute('y2', toPixel.y);
+            trailLine.setAttribute('class', 'trail-line');
+            trailLine.setAttribute('stroke', getPlayerColor(movement.playerId));
+            trailLine.setAttribute('stroke-width', '2');
+            trailLine.setAttribute('stroke-dasharray', '4');
+
+            // Append trail line to the line group
+            gameContainer.lineGroup.appendChild(trailLine);
+            gameState.trails.push(trailLine); // Store to clear in the next turn
+        }
+
+        function renderAttackLine(attack) {
+            const fromPixel = hexToPixel(attack.from.q, attack.from.r);
+            const toPixel = hexToPixel(attack.to.q, attack.to.r);
+
+            const attackLine = document.createElementNS(svgNS, 'line');
+            attackLine.setAttribute('x1', fromPixel.x);
+            attackLine.setAttribute('y1', fromPixel.y);
+            attackLine.setAttribute('x2', toPixel.x);
+            attackLine.setAttribute('y2', toPixel.y);
+            attackLine.setAttribute('class', 'attack-line');
+            attackLine.setAttribute('stroke', getPlayerColor(attack.attackerPlayerId));
+            attackLine.setAttribute('stroke-width', '3');
+            attackLine.setAttribute('stroke-dasharray', '5,5');
+
+            // Append attack line to the line group
+            gameContainer.lineGroup.appendChild(attackLine);
+            gameState.attackLines.push(attackLine); // Store to clear in the next turn
+        }
+
+
+        function clearSVG() {
+            while (gameContainer.tileGroup.firstChild) {
+                gameContainer.tileGroup.removeChild(gameContainer.tileGroup.firstChild);
+            }
+            while (gameContainer.lineGroup.firstChild) {
+                gameContainer.lineGroup.removeChild(gameContainer.lineGroup.firstChild);
+            }
+            while (gameContainer.unitGroup.firstChild) {
+                gameContainer.unitGroup.removeChild(gameContainer.unitGroup.firstChild);
+            }
+        }
+
+
+        function hexToPixel(q, r) {
+            const size = TILE_SIZE;
+            const x = size * Math.sqrt(3) * (q + r / 2) + window.innerWidth / 2;
+            const y = size * (3 / 2 * r) + window.innerHeight / 2;
+            return { x, y };
+        }
+
+        function polygonPoints(sides, radius, centerX, centerY) {
+            let points = '';
+            for (let i = 0; i < sides; i++) {
+                const angle_deg = 60 * i - 30;
+                const angle_rad = Math.PI / 180 * angle_deg;
+                const x = centerX + radius * Math.cos(angle_rad);
+                const y = centerY + radius * Math.sin(angle_rad);
+                points += `${x},${y} `;
+            }
+            return points.trim();
+        }
+
+        function getPlayerColor(pid) {
+            const player = gameState.players.find(p => p.playerId === pid);
+            return player ? player.color : '#000000';
+        }
+
+        function determineUnits(tile) {
+            if (!tile || typeof tile.q === 'undefined' || typeof tile.r === 'undefined') {
+                console.warn('Invalid tile provided to determineUnits:', tile);
+                return [];
+            }
+            
+            const q = tile.q;
+            const r = tile.r;
+            const key = `${q},${r}`;
+
+            // Retrieve the units on this tile, with tile data included
+            const units = gameState.grid[key]?.units || [];
+
+            // Optional debug to verify if units are being retrieved correctly
+            console.log(`Units on tile (${q}, ${r}):`, units);
+            
+            return units;
+        }
+
+        function handleTileClick(event) {
+            // Retrieve q and r from the data attributes
+            const q = parseInt(event.currentTarget.dataset.q);
+            const r = parseInt(event.currentTarget.dataset.r);
+            const hex = svg.querySelector(`polygon[data-q="${q}"][data-r="${r}"]`);
+
+            // Construct the key to access the tile from gameState.grid
+            const key = `${q},${r}`;
+            const targetTile = gameState.grid[key];
+
+            if (!targetTile) {
+                log(`Tile (${q}, ${r}) does not exist in the game state.`);
+                return;
+            }
+
+            // Retrieve the unit on the tile, if any
+            const units = determineUnits(targetTile);
+            hideUnitsPanel();
+
+            if (currentState === GameState.Idle) {
+                // Filter units that belong to the current player
+                const playerUnits = units.filter(unit => unit.playerId === playerId);
+
+                if (units.length > 0) {
+                    // Populate the Units Panel with units and tile details
+                    log("There are units on this tile.");
+                    showUnitsPanel();
+                    populateUnitsPanel(units, targetTile);
+                } else {
+                    // Populate the Units Panel with tile details only
+                    log("No units on this tile.");
+                    showUnitsPanel();
+                    populateUnitsPanel([], targetTile);
+                    removeAllActionButtons();
+                }
+
+                unhighlightAllTiles();
+                bringTileToFront(hex, 'yellow');
+
+                if (playerUnits.length === 1) {
+                    // Single unit scenario
+                    const selectedUnit = playerUnits[0];
+                    showUnitActionButtons(selectedUnit);
+                }
+
+            } else if (currentState === GameState.SelectingMoveTarget) {
+                if (!currentActionDef) {
+                    log("No action definition found for Move action.");
+                    return;
+                }
+
+                const distance = hexDistance(selectedUnit.tile, targetTile);
+                if (distance < currentActionDef.minRange || distance > currentActionDef.maxRange) {
+                    log(`Cannot move to (${q}, ${r}). Distance ${distance} is outside the allowed range (${currentActionDef.minRange}-${currentActionDef.maxRange}).`);
+                    return;
+                }
+                // Plan the move action
+                const action = {
+                    unitId: selectedUnit.unitId,
+                    actionKey: currentActionDef.key,      // action key
+                    targetTile: { q: q, r: r }
+                };
+                sendPlayerActions(action);
+                log(`Planned to move unit ${selectedUnit.unitId} to (${q}, ${r}).`);
+
+                // Reset state and UI
+                resetActionMode();
+            } else if (currentState === GameState.SelectingAttackTarget) {
+                // Selecting target tile for Attack action
+                if (!currentActionDef) {
+                    log("No action definition found for Attack action.");
+                    return;
+                }
+                
+                const distance = hexDistance(selectedUnit.tile, targetTile);
+                if (distance < currentActionDef.minRange || distance > currentActionDef.maxRange) {
+                    log(`Cannot move to (${q}, ${r}). Distance ${distance} is outside the allowed range (${currentActionDef.minRange}-${currentActionDef.maxRange}).`);
+                    return;
+                }
+
+                // Plan the attack action
+                const action = {
+                    unitId: selectedUnit.unitId,
+                    actionKey: currentActionDef.key,      // action key
+                    targetTile: { q: q, r: r }
+                };
+                sendPlayerActions(action);
+                log(`Planned to attack (${q}, ${r}) with unit ${selectedUnit.unitId}.`);
+
+                // Reset state and UI
+                resetActionMode();
+            }
+        }
+
+        function showUnitsPanel() {
+            const unitsPanel = gameContainer.unitsPanel;
+            if (unitsPanel) {
+                console.log('show units panel')
+                unitsPanel.style.display = 'block'; // Show the panel
+            }
+        }
+
+        function hideUnitsPanel() {
+            const unitsPanel = gameContainer.unitsPanel;
+            if (unitsPanel) {
+                unitsPanel.style.display = 'none'; // Hide the panel
+            }
+        }
+
+        function unhighlightAllTiles() {
+            const highlightedTiles = svg.querySelectorAll('.hex.highlighted');
+            highlightedTiles.forEach(tile => {
+                tile.classList.remove('highlighted');
+                tile.style.strokeWidth = '2';
+                tile.style.stroke = '#000'; // Reset to default stroke color
+            });
+        }
+
+        // Function to populate the Units Panel with both unit and tile details
+        function populateUnitsPanel(units, tile) {
+            const unitsList = document.getElementById('units-list');
+            unitsList.innerHTML = ''; // Clear existing list
+
+            // Add Tile Details at the top of the panel
+            const tileDetails = document.createElement('li');
+            tileDetails.classList.add('tile-details');
+            tileDetails.innerHTML = `
+                <strong>Tile Details:</strong><br>
+                Type: ${tile.type || 'Default'}<br>
+                Resources: ${(tile.resources || []).join(', ') || 'None'}<br>
+                Actions: ${(tile.actions || []).map(a => a.type).join(', ') || 'None'}
+            `;
+            unitsList.appendChild(tileDetails);
+
+            if (units.length === 0) {
+                const noUnits = document.createElement('li');
+                noUnits.textContent = 'No units on this tile.';
+                unitsList.appendChild(noUnits);
+                return;
+            }
+
+            // Add Unit Details below the tile details
+            units.forEach(unit => {
+                const unitItem = document.createElement('li');
+                unitItem.classList.add('unit-item');
+                unitItem.classList.add(unit.playerId === playerId ? 'your-unit' : 'other-unit');
+
+                if (unit.playerId !== playerId) {
+                    unitItem.classList.add('disabled');
+                }
+
+                unitItem.dataset.unitId = unit.unitId;
+
+                // Check if an action was already recorded for this unit
+                const hasAction = gameState.playerActions[playerId - 1]?.some(action => action.unitId === unit.unitId);
+                if (hasAction) {
+                    unitItem.style.border = '3px solid green';  // Highlight the border in green
+                }
+
+                // Unit Details
+                const unitDetails = document.createElement('div');
+                unitDetails.innerHTML = `
+                    <strong>Unit ${unit.unitId}</strong><br>
+                    Strength: <span>${unit.strength}</span><br>
+                    Power: <span>${unit.power}</span>
+                `;
+                unitItem.appendChild(unitDetails);
+
+                // Add color indicator
+                const colorIndicator = document.createElement('span');
+                colorIndicator.classList.add('color-indicator');
+                colorIndicator.style.backgroundColor = getPlayerColor(unit.playerId);
+                unitItem.appendChild(colorIndicator);
+
+                // Add event listener for player's own units
+                if (unit.playerId === playerId) {
+                    unitItem.addEventListener('click', () => {
+                        selectUnit(unit, unitItem);
+                    });
+                }
+
+                unitsList.appendChild(unitItem);
+            });
+        }
+
+        // Currently selected unit
+        let selectedUnitForAction = null;
+
+        // Function to handle unit selection
+        function selectUnit(unit, unitElement) {
+            // Deselect any previously selected unit
+            const previouslySelected = document.querySelector('.unit-item.selected');
+            if (previouslySelected) {
+                previouslySelected.classList.remove('selected');
+            }
+
+            // Select the new unit
+            unitElement.classList.add('selected');
+            selectedUnitForAction = unit;
+
+            log(`Selected Unit ${unit.unitId}. Choose an action.`);
+
+            // Show action buttons for the selected unit
+            showUnitActionButtons(unit);
+        }
+
+        function showUnitActionButtons(unit) {
+            // Remove existing action buttons if any
+            removeAllActionButtons(); 
+
+            const actionButtons = createContainer('action-buttons', {
+                top: '10px',
+                left: '220px', // Adjusted to avoid overlapping with the Units Panel
+                gap: '10px',
+                display: 'flex',
+                flexDirection: 'column',
+                width: '200px' // Increased width to accommodate unit details
+            });
+            actionButtons.classList.add('action-buttons');
+
+            // Retrieve available actions dynamically
+            const availableActions = Object.values(window.ACTIONS).filter(action => action.applyTo === 'unit');
+
+            availableActions.forEach(actionDef => {
+                const actionButton = document.createElement('button');
+                actionButton.textContent = `${actionDef.name}: ${actionDef.powerConsumption}`;
+                actionButton.classList.add('action-button');
+                actionButton.style.backgroundColor = actionDef.color;
+                actionButton.disabled = unit.power < actionDef.powerConsumption;
+                actionButton.title = unit.power < actionDef.powerConsumption ? `Not enough power to ${actionDef.name}.` : '';
+
+                actionButton.addEventListener('click', () => {
+                    if (actionDef.type === 'reload') {
+                        // Directly send reload action without selecting a target
+                        
+                        const action = {
+                            unitId: unit.unitId,
+                            targetTile: { q: unit.tile.q, r: unit.tile.r },
+                            actionKey: actionDef.key,      // action key
+                        };
+                        sendPlayerActions(action);
+                        log(`Reloaded unit ${unit.unitId}. Power is now ${unit.power + 1}.`);
+                        
+                        // Optionally, disable the reload button if power reaches max
+                        if (unit.power + 1 >= (gameState.maxPower || 5)) {
+                            actionButton.disabled = true;
+                            actionButton.title = 'Power is already at maximum.';
+                        }
+                        currentState = GameState.Idle;
+                        removeAllActionButtons();
+                        unhighlightAllTiles();
+                    } else {
+                        // For other actions, set the action mode
+                        log(`Select a target for ${actionDef.name} with unit ${unit.unitId}.`);
+                        setActionMode(actionDef.type, unit, actionDef);
+                    }
+                });
+
+                actionButtons.appendChild(actionButton);
+            });
+
+            // Cancel Button
+            const cancelButton = document.createElement('button');
+            cancelButton.textContent = 'Cancel';
+            cancelButton.classList.add('action-button');
+            cancelButton.style.backgroundColor = '#757575'; // Grey
+            cancelButton.addEventListener('click', () => {
+                removeAllActionButtons();
+                log("Action canceled.");
+                currentState = GameState.Idle;
+                unhighlightAllTiles();
+            });
+            actionButtons.appendChild(cancelButton);
+
+            gameContainer.appendChild(actionButtons);
+        }
+
+        // Helper function to capitalize first letter
+        function capitalizeFirstLetter(string) {
+            return string.charAt(0).toUpperCase() + string.slice(1);
+        }
+
+        let actionMode = null; // 'move' or 'attack'
+        let selectedUnit = null;
+
+        // Modify the setActionMode function in your client-side script
+
+        function setActionMode(mode, unit, actionDef) {
+            actionMode = mode;
+            selectedUnit = unit;
+            currentActionDef = actionDef; // Store the current action definition
+
+            // Debugging: Check if selectedUnit has valid tile data
+            console.log("Selected Unit: ", selectedUnit);
+            if (!selectedUnit.tile || typeof selectedUnit.tile.q === 'undefined' || typeof selectedUnit.tile.r === 'undefined') {
+                console.error("Selected unit does not have valid tile data!", selectedUnit);
+                return; // Exit if the tile data is missing
+            }
+
+            console.log(`Selected Unit Tile: q=${selectedUnit.tile.q}, r=${selectedUnit.tile.r}`);
+
+            // Update currentState based on the mode
+            if (mode === 'move') {
+                currentState = GameState.SelectingMoveTarget;
+                console.log(`Transitioning to SelectingMoveTarget state for unit ${unit.unitId}.`);
+            } else if (mode === 'attack') {
+                currentState = GameState.SelectingAttackTarget;
+                console.log(`Transitioning to SelectingAttackTarget state for unit ${unit.unitId}.`);
+            } else if (mode === 'heal') {
+                currentState = GameState.SelectingHealTarget;
+                console.log(`Transitioning to SelectingHealTarget state for unit ${unit.unitId}.`);
+            } else if (mode === 'spawn') {
+                currentState = GameState.SelectingSpawnTarget;
+                console.log(`Transitioning to SelectingSpawnTarget state for unit ${unit.unitId}.`);
+            }
+            // Add more modes as needed
+
+            // Add event listeners to tiles for action targets based on action's range
+            for (const key in gameState.grid) {
+                const tile = gameState.grid[key];
+                const hex = svg.querySelector(`polygon[data-q="${tile.q}"][data-r="${tile.r}"]`);
+                if (hex) {
+                    const distance = hexDistance(selectedUnit.tile, tile);
+                    if (distance >= actionDef.minRange && distance <= actionDef.maxRange) {
+                        bringTileToFront(hex, actionDef.color);
+                    } else {
+                        hex.style.cursor = 'not-allowed';
+                    }
+
+                    hex.addEventListener('click', actionTargetHandler);
+                }
+            }
+
+            // Bring the selected unit's current tile to front and highlight it
+            const currentHex = svg.querySelector(`polygon[data-q="${selectedUnit.tile.q}"][data-r="${selectedUnit.tile.r}"]`);
+            if (currentHex) {
+                bringTileToFront(currentHex, 'yellow');
+            }
+        }
+
+        // Modify the actionTargetHandler function in your client-side script
+
+        function actionTargetHandler(event) {
+            const q = parseInt(event.target.dataset.q);
+            const r = parseInt(event.target.dataset.r);
+            const targetTile = gameState.grid[`${q},${r}`];
+            console.log(selectedUnit);
+
+            if (!currentActionDef) {
+                log(`No action definition found for ${actionMode} action.`);
+                return;
+            }
+
+            const distance = hexDistance(selectedUnit.tile, targetTile);
+            if (distance < currentActionDef.minRange || distance > currentActionDef.maxRange) {
+                log(`Selected tile (${q}, ${r}) is out of range for action ${currentActionDef.name}.`);
+                return;
+            }
+
+            // Send the appropriate action to the server
+            const action = {
+                unitId: selectedUnit.unitId,
+                actionKey: currentActionDef.key,      // action key
+                targetTile: { q: q, r: r }
+            };
+            sendPlayerActions(action);
+            log(`Planned to ${actionMode} unit ${selectedUnit.unitId} at (${q}, ${r}).`);
+
+            // Reset state and UI
+            resetActionMode();
+        }
+
+
+        function resetActionMode() {
+            actionMode = null;
+            selectedUnit = null;
+            removeAllActionButtons();
+
+            // Remove all temporary styles and event listeners
+            for (const key in gameState.grid) {
+                const tile = gameState.grid[key];
+                const hex = svg.querySelector(`polygon[data-q="${tile.q}"][data-r="${tile.r}"]`);
+                if (hex) {
+                    hex.style.stroke = '#000';
+                    hex.style.strokeWidth = '2';
+                    hex.style.cursor = 'pointer';
+                    hex.removeEventListener('click', actionTargetHandler);
+                }
+            }
+
+            // Transition back to Idle state
+            currentState = GameState.Idle;
+            console.log("Transitioned back to Idle state.");
+        }
+
+        function hexDistance(tile1, tile2) {
+            return (Math.abs(tile1.q - tile2.q) + Math.abs(tile1.r - tile2.r) + Math.abs((-tile1.q - tile1.r) - (-tile2.q - tile2.r))) / 2;
+        }
+
+        function bringTileToFront(tile, color) {
+            // Move the tile's SVG element to the end of its parent container (tileGroup)
+            gameContainer.tileGroup.appendChild(tile);
+            highlightTile(tile, color);
+
+            // If the tile has units, bring the unit's elements to the front
+            const key = `${tile.dataset.q},${tile.dataset.r}`;
+            const units = gameState.grid[key]?.units || [];
+            if (units.length > 0) {
+                // Find the center of the tile
+                const { q, r } = units[0].tile;
+                const { x, y } = hexToPixel(q, r);
+
+                // Move all unit elements related to this tile to the front
+                const unitElements = gameContainer.unitGroup.querySelectorAll(`circle[cx="${x}"][cy="${y}"]`);
+                unitElements.forEach(unitCircle => {
+                    gameContainer.unitGroup.appendChild(unitCircle);
+                });
+
+                const unitTexts = gameContainer.unitGroup.querySelectorAll(`text[x="${x}"][y="${y + 5}"]`);
+                unitTexts.forEach(unitText => {
+                    gameContainer.unitGroup.appendChild(unitText);
+                });
+            }
+        }
+
+        function highlightTile(tile, color) {
+            tile.classList.add('highlighted');
+            tile.style.stroke = color;
+            tile.style.strokeWidth = '5';
+            tile.style.cursor = 'pointer';
+        }
+
+        function showRestartButton() {
+            const restartButton = document.createElement('button');
+            restartButton.textContent = 'Restart Game';
+            restartButton.classList.add('action-button');
+            restartButton.style.position = 'absolute';
+            restartButton.style.top = '50%';
+            restartButton.style.left = '50%';
+            restartButton.style.transform = 'translate(-50%, -50%)';
+            restartButton.style.backgroundColor = '#4CAF50';
+            restartButton.addEventListener('click', () => {
+                restartGame();
+            });
+            gameContainer.appendChild(restartButton);
+        }
+
+        // Log messages to the log container
+        function log(message) {
+            if (!gameContainer.logContainer) {
+                // Create log container if it doesn't exist
+                const logContainer = createContainer('log-container', {
+                    bottom: '0',
+                    left: '0',
+                    width: '100%',
+                    maxHeight: '150px',
+                    overflowY: 'auto',
+                    backgroundColor: '#fff',
+                    padding: '5px',
+                    boxSizing: 'border-box',
+                    fontSize: '14px',
+                    borderTop: '1px solid #ccc'
+                });
+                gameContainer.appendChild(logContainer);
+                gameContainer.logContainer = logContainer;
+            }
+            const p = document.createElement('p');
+            p.textContent = message;
+            gameContainer.logContainer.appendChild(p);
+            gameContainer.logContainer.scrollTop = gameContainer.logContainer.scrollHeight;
+            console.log(message); // Also log to console for debugging
+        }
+
+        function createLog(message) {
+            log(message);
+        }
+
+        function updateControlButtons() {
+            // Example: Enable Execute Turn button if all actions are submitted
+            // In this refactored version, this may not be necessary
+        }
+
+        function removeAllActionButtons() {
+            const actionButtons = document.querySelector('.action-buttons');
+            if (actionButtons) {
+                gameContainer.removeChild(actionButtons);
+            }
+        }
+
+        // Function to restart the game
+        function restartGame() {
+            socket.send(JSON.stringify({ type: 'restart' }));
+            log("Requesting game restart...");
+        }
+
+        // Initialize the game UI
+        initGame();
+
+        // Define the rainbow gradient for multi-player occupancy
+        function defineRainbowGradient() {
+            const defs = document.createElementNS(svgNS, 'defs');
+
+            const gradient = document.createElementNS(svgNS, 'linearGradient');
+            gradient.setAttribute('id', 'rainbowGradient');
+            gradient.setAttribute('x1', '0%');
+            gradient.setAttribute('y1', '0%');
+            gradient.setAttribute('x2', '100%');
+            gradient.setAttribute('y2', '0%');
+
+            const colors = [
+                { offset: '0%', color: '#FF0000' },    // Red
+                { offset: '20%', color: '#FF7F00' },   // Orange
+                { offset: '40%', color: '#FFFF00' },   // Yellow
+                { offset: '60%', color: '#00FF00' },   // Green
+                { offset: '80%', color: '#0000FF' },   // Blue
+                { offset: '100%', color: '#8B00FF' }   // Violet
+            ];
+
+            colors.forEach(c => {
+                const stop = document.createElementNS(svgNS, 'stop');
+                stop.setAttribute('offset', c.offset);
+                stop.setAttribute('stop-color', c.color);
+                gradient.appendChild(stop);
+            });
+
+            defs.appendChild(gradient);
+            svg.appendChild(defs);
+        }
+
+        // Call the function to define the gradient
+        defineRainbowGradient();
+
+    </script>
+</body>
+</html>
