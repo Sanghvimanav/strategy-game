@@ -1,0 +1,19 @@
+{
+  "name": "game-server",
+  "version": "1.0.0",
+  "description": "A WebSocket-based game server for a strategy game.",
+  "main": "server3.js",
+  "scripts": {
+    "start": "node server3.js"
+  },
+  "keywords": [
+    "websocket",
+    "game-server",
+    "strategy-game"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "ws": "^8.18.0"
+  }
+}
