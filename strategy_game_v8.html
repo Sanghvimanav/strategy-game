@@ -1560,6 +1560,20 @@
             });
         }
 
+        // Helper function to format resource storage
+        function formatResourceStorage(resourceStorage) {
+            return Object.entries(resourceStorage)
+                .map(([resource, amount]) => `${resource}: ${amount}`)
+                .join(', ');
+        }
+
+        // Helper function to format resource quantities
+        function formatResourceQuantities(resourceQuantities) {
+            return Object.entries(resourceQuantities)
+                .map(([resource, amount]) => `${resource}: ${amount}`)
+                .join(', ');
+        }
+
         // Currently selected unit
         let selectedUnitForAction = null;
 
