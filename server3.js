@@ -1,6 +1,7 @@
 const WebSocket = require('ws');
 
-const wss = new WebSocket.Server({ port: 8080 });
+const PORT = process.env.PORT || 8080;
+const wss = new WebSocket.Server({ port: PORT });
 //const wss = new WebSocket.Server({ host: '0.0.0.0', port: 8080 });
 
 const NUM_PLAYERS = 2; // Change to minimum number of players
