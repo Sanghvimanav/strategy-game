@@ -327,15 +327,15 @@ const UNIT_TYPES = {
     stalker: {
         name: 'Stalker',
         strength: 70,
-        actions: ['move_short', 'fast_attack', 'reload', 'regenerate'],
-        passiveActions:['reload'],
+        actions: ['move_short', 'fast_attack', 'reload'],
+        passiveActions:['reload', 'regenerate'],
         color: '#FFD700' // Gold
     },
     colossus: {
         name: 'Colossus',
         strength: 110,
-        actions: ['slow_move', 'attack_ray', 'reload', 'regenerate', 'extract_resource'],
-        passiveActions:['reload'],
+        actions: ['slow_move', 'attack_ray', 'reload', 'extract_resource'],
+        passiveActions:['reload', 'regenerate'],
         color: '#FFD700' // Gold
     },
     pylon: {
@@ -1903,7 +1903,7 @@ function handleDisconnect(playerId) {
     const player = game.players[playerIndex];
     if (player) {
         // Remove player's units from the grid
-        console.log(player.units)
+        /*console.log(player.units)
         player.units.forEach(unit => {
             const tile = unit.tile;
             if (tile) {
@@ -1918,7 +1918,7 @@ function handleDisconnect(playerId) {
                     tile.owner = tile.units[0].playerId;
                 }
             }
-        });
+        });*/
 
         // Remove player from the players array
         game.players.splice(playerIndex, 1);
@@ -1993,7 +1993,7 @@ function winCondition(player) {
 
     // Check if the player has at least 10 gold
     const playerGold = player.resources['gold'] || 0; // Default to 0 if gold is undefined
-    if (playerGold >= 10) {
+    if (playerGold >= 20) {
         console.log(`Player ${player.playerId} wins by collecting 10 gold!`);
         return true; // Win by resource collection
     }
