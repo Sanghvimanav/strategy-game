@@ -291,7 +291,7 @@ const UNIT_TYPES = {
     },
     zergling: {
         name: 'Zergling',
-        strength: 75 ,
+        strength: 70 ,
         actions: ['fast_move', 'reload', 'extract_resource'],
         passiveActions:['stun', 'attack_passive'],
         color: '#0000FF' // Blue
@@ -319,8 +319,8 @@ const UNIT_TYPES = {
     },
     zealot: {
         name: 'Zealot',
-        strength: 70,
-        actions: ['move_short', 'move_long', 'slash', 'reload'],
+        strength: 75,
+        actions: ['move_short', 'move_long', 'reload'],
         passiveActions:['stun', 'reload', 'attack_passive', 'regenerate'],
         color: '#FFD700' // Gold
     },
