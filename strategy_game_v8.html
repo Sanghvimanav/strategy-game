@@ -303,8 +303,9 @@
         let isInitialCenterSet = false;
 
         // Connect to the WebSocket server
-        const socket = new WebSocket('wss://strategy-game.onrender.com'); // render server
-        // const socket = new WebSocket('ws://127.0.0.1:8080'); //localhost
+
+        //const socket = new WebSocket('wss://strategy-game.onrender.com'); // render server
+        const socket = new WebSocket('ws://127.0.0.1:8080'); //localhost
         //const socket = new WebSocket('ws://192.168.0.182:8080'); // Joseph's IP
         //const socket = new WebSocket('ws://192.168.0.106:8080'); // Manav's IP
         //const socket = new WebSocket('ws://192.168.0.102:8080'); // Quinn's IP
@@ -317,12 +318,6 @@
             if (message.type === 'welcome') {
                 playerId = message.playerId;
                 showColorSelection(message.availableColors);
-                
-                // If player 1, show game type selection options
-                if (playerId === 1) {
-                    console.log('playerId is 1')
-                    showGameTypeSelection(message.gameTypes);
-                }
             }
 
             if (message.type === 'actions_list') {
@@ -331,14 +326,29 @@
                 console.log('Received ACTIONS list from server:', ACTIONS);
             }
 
-            if (message.type === 'game_type_selected') {
-                log(`Game type selected: ${message.gameType}`);
-            }
-
             if (message.type === 'color_selected') {
                 playerColor = message.color;
                 log(`You selected color ${playerColor}. Waiting for other players...`);
                 //updatePlayerInfo(playerId, playerColor);  // Update player info after color selection
+            }
+
+            if (message.type === 'color_taken') {
+                // Handle color selection from another player
+                const { playerId: selectingPlayerId, color } = message;
+                if (selectingPlayerId === playerId) {
+                    playerColor = color;
+                    log(`You selected color ${playerColor}. Waiting for other players...`);
+                } else {
+                    log(`Player ${selectingPlayerId} selected color ${color}.`);
+                    // Update the UI to remove the selected color
+                    const colorButtons = document.querySelectorAll('.color-buttons button');
+                    colorButtons.forEach(button => {
+                        if (button.getAttribute('data-color') === color) {
+                            button.disabled = true;
+                            button.style.opacity = 0.5; // Dim the button
+                        }
+                    });
+                }                
             }
 
             if (message.type === 'init') {
@@ -369,47 +379,6 @@
                 alert(`Error: ${message.message}`);
             }
         });
-
-        function showGameTypeSelection(gameTypes) {
-            const gameTypeSelectionContainer = document.createElement('div');
-            gameTypeSelectionContainer.classList.add('game-type-selection');
-            gameTypeSelectionContainer.innerHTML = '<h3>Select Game Type:</h3>';
-
-            gameTypes.forEach(gameType => {
-                const gameTypeButton = document.createElement('button');
-                gameTypeButton.textContent = `${gameType.name}: ${gameType.description}`;
-                gameTypeButton.addEventListener('click', () => {
-                    selectGameType(gameType.typeKey);
-                });
-
-                gameTypeSelectionContainer.appendChild(gameTypeButton);
-            });
-
-            // Set styles to position the container at the top center
-            Object.assign(gameTypeSelectionContainer.style, {
-                position: 'absolute',
-                top: '10px',
-                left: '50%',
-                transform: 'translateX(-50%)', // Center horizontally
-                zIndex: '2000',
-                backgroundColor: 'rgba(255, 255, 255, 0.95)',
-                padding: '15px',
-                borderRadius: '8px',
-                boxShadow: '0 0 10px rgba(0,0,0,0.3)',
-            });
-
-            document.body.appendChild(gameTypeSelectionContainer);
-        }
-
-
-        function selectGameType(gameTypeKey) {
-            socket.send(JSON.stringify({ type: 'game_type_selection', gameType: gameTypeKey }));
-            log(`Player 1 selected game type: ${gameTypeKey}`);
-            const gameTypeSelectionContainer = document.querySelector('.game-type-selection');
-            if (gameTypeSelectionContainer) {
-                gameTypeSelectionContainer.remove();
-            }
-        }
 
         function removeColorSelection() {
             const colorSelection = document.querySelector('.color-selection');
@@ -1494,10 +1463,10 @@
             tileDetails.innerHTML = `
                 <strong>Tile Details:</strong><br>
                 Type: ${tile.type || 'Default'}<br>
-                <strong>Resource Storage:</strong> ${
+                <strong>Extracted:</strong> ${
                     tile.resourceStorage ? formatResourceStorage(tile.resourceStorage) : 'None'
                 }<br>
-                <strong>Resource Quantities:</strong> ${
+                <strong>Resources:</strong> ${
                     tile.resourceQuantities ? formatResourceQuantities(tile.resourceQuantities) : 'None'
                 }
             `;

@@ -8,7 +8,7 @@ const NUM_PLAYERS = 2; // Change to minimum number of players
 const MAX_PLAYERS = 6; // New constant to set the maximum players allowed
 
 const MAX_POWER_PER_UNIT = 5; // Set this to your desired maximum power per unit
-const GRID_SIZE = 3;
+const GRID_SIZE = 4;
 
 
 const ACTIONS = {
@@ -174,17 +174,18 @@ const ACTIONS = {
         applyTo: 'friendly', // Only affects enemies
         self: true
     },
-    spawn: {
-        key: 'spawn',
+    spawn_zergling: {
+        key: 'spawn_zergling',
         type: 'spawn',
-        name: 'Spawn',
+        name: 'Spawn Zergling',
         minRange: 0,
         maxRange: 0,
         color: '#FFD700',        // Gold
-        powerConsumption: 3,
+        powerConsumption: 5,
         strengthImpact: 0,
         applyTo: 'none', // Only affects enemies
-        self: false
+        self: false,
+        unitType: 'zergling'
     },
     attack_ray: {
         key: 'attack_ray',
@@ -270,7 +271,7 @@ const UNIT_TYPES = {
     marine: {
         name: 'Marine',
         strength: 100,
-        actions: ['move_short', 'attack_short', 'reload'],
+        actions: ['move_short', 'attack_short', 'reload', 'extract_resource'],
         passiveActions:['attack_passive', 'reload'],
         color: '#00FF00' // Green
     },
@@ -291,42 +292,49 @@ const UNIT_TYPES = {
     zergling: {
         name: 'Zergling',
         strength: 75 ,
-        actions: ['fast_move', 'reload'],
-        passiveActions:['stun', 'regenerate', 'attack_passive'],
+        actions: ['fast_move', 'reload', 'extract_resource'],
+        passiveActions:['stun', 'attack_passive'],
         color: '#0000FF' // Blue
     },
-    roach: {
-        name: 'Roach',
-        strength: 75,
+    ravager: {
+        name: 'Ravager',
+        strength: 100,
         actions: ['move_short', 'attack_mortar', 'reload'],
-        passiveActions:['regenerate', 'reload', 'extract_resource'],
+        passiveActions:['reload'],
         color: '#9C27B0' // Purple
     },
     baneling: {
         name: 'Baneling',
         strength: 100,
         actions: ['move_short', 'explode', 'reload'],
-        passiveActions:['regenerate'],
+        passiveActions:['reload'],
+        color: '#FFD700' // Gold
+    },
+    queen: {
+        name: 'Queen',
+        strength: 110,
+        actions: ['move_short', 'reload', 'spawn_zergling'],
+        passiveActions:['reload'],
         color: '#FFD700' // Gold
     },
     zealot: {
         name: 'Zealot',
-        strength: 100,
+        strength: 70,
         actions: ['move_short', 'move_long', 'slash', 'reload'],
-        passiveActions:['reload', 'attack_passive'],
+        passiveActions:['stun', 'reload', 'attack_passive', 'regenerate'],
         color: '#FFD700' // Gold
     },
     stalker: {
         name: 'Stalker',
-        strength: 100,
-        actions: ['move_short', 'fast_attack', 'reload'],
+        strength: 70,
+        actions: ['move_short', 'fast_attack', 'reload', 'regenerate'],
         passiveActions:['reload'],
         color: '#FFD700' // Gold
     },
     colossus: {
         name: 'Colossus',
-        strength: 150,
-        actions: ['slow_move', 'attack_ray', 'reload'],
+        strength: 110,
+        actions: ['slow_move', 'attack_ray', 'reload', 'regenerate', 'extract_resource'],
         passiveActions:['reload'],
         color: '#FFD700' // Gold
     },
@@ -348,64 +356,12 @@ let game = {
     availableColors: ['#4CAF50', '#0000FF', '#FFA500', '#800080', '#FF0000', '#00FFFF'], //green, blue, orange, purple, red, cyan
     lastTurnActions: [], // Stores actions of the last turn
     delayedActions: [], // New array to store delayed actions
-    winConditions: {
-        type: 'custom',  // Can be 'elimination', 'resource', or 'custom'
-        conditions: {
-            gold: 10,   // Example: Player needs to collect 10 gold
-            science: 5, // Example: New win condition based on science points
-        }
-    },
     actions: ACTIONS, // Add the ACTIONS object to the game state
     lastTurnDefeatedUnits: []
 };
 
 // Track connected clients (players)
 const clients = [];
-
-function setGameType(gameTypeKey) {
-    const selectedGameType = GameTypes[gameTypeKey];
-    if (selectedGameType) {
-        game.winConditions.type = gameTypeKey;
-        game.winConditions.conditions = selectedGameType.winConditions;
-        console.log(`Game type set to ${selectedGameType.name} with win conditions:`, game.winConditions.conditions);
-    } else {
-        console.log('Invalid game type selected');
-    }
-}
-
-
-const GameTypes = {
-    'elimination': {
-        name: 'Elimination',
-        description: 'Eliminate all opponent units to win.',
-        winConditions: {
-            elimination: true // No specific resources, just elimination of all units
-        }
-    },
-    'goldRush': {
-        name: 'Gold Rush',
-        description: 'First player to accumulate 10 gold wins.',
-        winConditions: {
-            gold: 30
-        }
-    },
-    'scienceRace': {
-        name: 'Science Race',
-        description: 'First player to accumulate 5 science points wins.',
-        winConditions: {
-            science: 5
-        }
-    },
-    'mixed': {
-        name: 'Mixed Objectives',
-        description: 'Win by either accumulating 10 gold or 5 science points.',
-        winConditions: {
-            gold: 10,
-            science: 5
-        }
-    }
-};
-
 
 // Resource System
 const resources = {}; // This will store all resource types and their properties
@@ -497,13 +453,14 @@ const TileTypes = {
 };
 
 // Function to create a tile from a tile type
-function createTileFromType(q, r, s, tileTypeKey, height) {
+function createTileFromType(q, r, s, tileTypeKey, height, resourceQuantities) {
     const tileType = TileTypes[tileTypeKey] || TileTypes.default;  // Fallback to default if not found
     const tile = new Tile(q, r, s, {
         color: tileType.color,
         type: tileTypeKey,
         actions: tileType.actions || [],
         height: height || 0,  // Set the height here
+        resourceQuantities: resourceQuantities,
     });
 
     // Add resources with specified quantities
@@ -526,14 +483,16 @@ function generateInitialGameState() {
             if (Math.abs(s) < GRID_SIZE) {
                 let tileType = 'default';  // Default tile type
                 let height = 0
+                let resourceQuantities = null;
 
                 // Define specific locations for tile types (this can be randomized or expanded)
                 if (q === 0 && r === 0) {
                     tileType = 'gold';
+                    resourceQuantities = { gold: 10 };
                     //height = 2;// Central tile is a gold tile
                 } else if (q === -2 && r === 2) {
                     tileType = 'gold';
-                    resourceQuantities = { gold: 10 };
+                    resourceQuantities = { gold: 5 };
                 } else if (q === -2 && r === 0) {
                     tileType = 'gold';
                     resourceQuantities = { gold: 5 };
@@ -581,10 +540,10 @@ function generateInitialGameState() {
 
         let initialUnits;
         if (player.color == "#FF0000") { //red team
-            initialUnits = ['zergling', 'zergling', 'zergling', 'zergling', 'roach', 'baneling'];
-            //initialUnits = ['roach'];
+            initialUnits = ['zergling', 'zergling', 'ravager', 'baneling', 'queen'];
+            //initialUnits = ['ravager'];
         } else if (player.color == "#800080") { //purple team
-            initialUnits = ['zealot', 'zealot', 'stalker', 'colossus', 'pylon'];
+            initialUnits = ['zealot', 'zealot', 'stalker', 'colossus'];
             //initialUnits = ['pylon'];
         } else {
             initialUnits = ['marine', 'marine', 'marine', 'medic', 'ghost'];
@@ -725,7 +684,7 @@ function calculateResources() {
         console.log(`Player ${player.playerId} now has resources:`, player.resources);
 
          // Check for custom win conditions after resource calculation
-         if (checkCustomWinConditions(player)) {
+         if (winCondition(player)) {
             console.log(`Player ${player.playerId} meets the win conditions!`);
             endGame([player]);
             return; // Exit the loop early since the game is ending
@@ -803,29 +762,11 @@ wss.on('connection', function connection(ws) {
     ws.send(JSON.stringify({
         type: 'welcome',
         playerId: playerId,
-        availableColors: game.availableColors,
-        gameTypes: Object.keys(GameTypes).map(typeKey => ({
-            typeKey: typeKey,
-            name: GameTypes[typeKey].name,
-            description: GameTypes[typeKey].description
-        }))
+        availableColors: game.availableColors
     }));
 
     ws.on('message', function incoming(message) {
         const data = JSON.parse(message);
-
-        // Add this section to handle game type selection
-        if (data.type === 'game_type_selection' && playerId === 1) {
-            // Player 1 chooses the game type
-            const selectedGameType = GameTypes[data.gameType];
-            if (selectedGameType) {
-                setGameType(data.gameType);
-                broadcast({ type: 'game_type_selected', gameType: selectedGameType.name });
-            } else {
-                ws.send(JSON.stringify({ type: 'error', message: 'Invalid game type selected' }));
-            }
-            return;  // Return early to prevent further processing
-        }
 
         if (data.type === 'color_selection') {
             handleColorSelection(playerId, data);
@@ -866,6 +807,14 @@ function handleColorSelection(playerId, data) {
 
     // Notify player that color selection was successful
     player.ws.send(JSON.stringify({ type: 'color_selected', color: color }));
+
+    // Notify all other players about the color being taken
+    broadcast({
+        type: 'color_taken',
+        playerId: playerId,
+        color: color,
+        message: `Player ${playerId} has taken the color ${color}.`
+    });
 
     // Check if all players have selected colors, units, and strength
     if (game.players.every(p => p.color)) {
@@ -1621,26 +1570,16 @@ function processMovementActions(movementActions) {
         // Validate and process the movement path
         const path = action.path;
         if (!Array.isArray(path) || path.length === 0) {
-            console.log(`Invalid movement path for unit ${unit.unitId}.`);
-            return;
+            console.log(`No path provided for unit ${attacker.unitId}. Defaulting to current tile for ${actionDefinition.key}.`);
+            path = [{ q: unit.tile.q, r: unit.tile.r }];
         }
 
+        let pathTiles = getPathTiles(path);
+
         // Start from the unit's current tile
-        let currentTile = game.grid[`${unit.tile.q},${unit.tile.r}`];
-        for (let i = 1; i < path.length; i++) {
-            const nextTileCoords = path[i];
-            const nextTile = game.grid[`${nextTileCoords.q},${nextTileCoords.r}`];
-
-            if (!nextTile) {
-                console.log(`Tile (${nextTileCoords.q}, ${nextTileCoords.r}) does not exist.`);
-                break;
-            }
-
-            const distance = hexDistance(currentTile, nextTile);
-            if (distance !== 1) {
-                console.log(`Tiles (${currentTile.q}, ${currentTile.r}) and (${nextTile.q}, ${nextTile.r}) are not adjacent.`);
-                break;
-            }
+        let currentTile = pathTiles[0];
+        for (let i = 1; i < pathTiles.length; i++) {
+            const nextTile = pathTiles[i];
 
             // Move the unit step by step
             moveUnit(unit, nextTile);
@@ -1798,16 +1737,13 @@ function getPathTiles(path){
 }
 
 function processSpawnAction(actionData) {
-    const tile = game.grid[`${actionData.targetTile.q},${actionData.targetTile.r}`];
-    if (!tile) {
-        console.log(`Tile (${actionData.targetTile.q}, ${actionData.targetTile.r}) not found for spawning.`);
-        return;
-    }
+    const { unit: attacker, actionDefinition } = actionData;
 
-    const actionDefinition = ACTIONS[action.actionKey];
-    if (!actionDefinition) {
-        console.log(`Action definition for '${action.actionKey}' not found.`);
-        return;
+    // Validate the action path
+    let path = actionData.path;
+    if (!Array.isArray(path) || path.length < 1) {
+        console.log(`No path provided for unit ${attacker.unitId}. Defaulting to current tile for ${actionDefinition.key}.`);
+        path = [{ q: attacker.tile.q, r: attacker.tile.r }];
     }
 
     const player = game.players.find(p => p.playerId === findUnitById(actionData.unitId).playerId);
@@ -1816,14 +1752,17 @@ function processSpawnAction(actionData) {
         return;
     }
 
-    spawnUnit(player, tile.q, tile.r);
-    console.log(`Player ${player.playerId} spawned a new unit on tile (${tile.q}, ${tile.r}).`);
+    const unitType = actionDefinition.unitType;
+    spawnUnit(player, attacker.tile.q, attacker.tile.r, unitType);
+    console.log(`Player ${player.playerId} spawned a ${unitType} unit on tile (${attacker.tile.q}, ${attacker.tile.r}).`);
 
     // Record the spawn for visualization
-    game.lastTurnSpawns.push({
+    game.lastTurnActions.push({
+        type: actionDefinition.key,
         playerId: player.playerId,
-        tile: { q: tile.q, r: tile.r },
-        unitId: player.units[player.units.length - 1].unitId
+        tile: { q: attacker.tile.q, r: attacker.tile.r },
+        unitId: player.units[player.units.length - 1].unitId,
+        unitType: unitType
     });
 }
 
@@ -1916,7 +1855,6 @@ function broadcastGameState() {
         })),
         turn: game.turn,
         playerActions: game.playerActions, 
-        winConditions: game.winConditions,  // Include the selected win conditions
         lastTurnActions: game.lastTurnActions,
         lastTurnDefeatedUnits: game.lastTurnDefeatedUnits, // Include defeated units
         delayedActions: game.delayedActions,
@@ -1935,6 +1873,7 @@ function broadcastGameState() {
             actions: tile.actions,      // **Added actions property**
             resources: tile.resources,  // **Added resources property**
             resourceStorage: tile.resourceStorage, // Include stored resources
+            resourceQuantities: tile.resourceQuantities,
             height: tile.height,  // Include the height
             enterableFromDirections: tile.enterableFromDirections,  // Include the enterable directions
             units: tile.units.map(unit => ({
@@ -1964,6 +1903,7 @@ function handleDisconnect(playerId) {
     const player = game.players[playerIndex];
     if (player) {
         // Remove player's units from the grid
+        console.log(player.units)
         player.units.forEach(unit => {
             const tile = unit.tile;
             if (tile) {
@@ -2041,28 +1981,24 @@ function endGame(winningPlayers) {
     }
 }
 
-function checkCustomWinConditions(player) {
-    const { conditions } = game.winConditions;
-    console.log(conditions)
-    if (conditions.elimination) {
-        // Check if all opponents' units are eliminated
-        const opponents = game.players.filter(p => p.playerId !== player.playerId);
-        const allOpponentsDefeated = opponents.every(opponent => opponent.units.length === 0);
-        if (allOpponentsDefeated) {
-            console.log(`Player ${player.playerId} wins by eliminating all opponents!`);
-            return true;  // Win by elimination
-        }
+function winCondition(player) {
+    // Check if all opponents have been eliminated
+    const opponents = game.players.filter(p => p.playerId !== player.playerId);
+    const allOpponentsDefeated = opponents.every(opponent => opponent.units.length === 0);
+
+    if (allOpponentsDefeated) {
+        console.log(`Player ${player.playerId} wins by eliminating all opponents!`);
+        return true; // Win by elimination
     }
 
-    // Check resource-based win conditions
-    for (let condition in conditions) {
-        console.log(`checking ${condition}`)
-        if (condition !== 'elimination' && player.resources[condition] >= conditions[condition]) {
-            console.log(`Player ${player.playerId} wins by satisfying the ${condition} condition!`);
-            return true;  // Player meets a win condition
-        }
+    // Check if the player has at least 10 gold
+    const playerGold = player.resources['gold'] || 0; // Default to 0 if gold is undefined
+    if (playerGold >= 10) {
+        console.log(`Player ${player.playerId} wins by collecting 10 gold!`);
+        return true; // Win by resource collection
     }
 
+    // No win condition met
     return false;
 }
 
