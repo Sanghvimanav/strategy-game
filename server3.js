@@ -9,8 +9,24 @@ const MAX_PLAYERS = 6; // New constant to set the maximum players allowed
 
 const MAX_POWER_PER_UNIT = 5; // Set this to your desired maximum power per unit
 const GRID_SIZE = 4;
-
-
+   
+// Define processing order based on action types
+// Define processing order and color for each action type
+const actionOrder = [
+    { type: 'fast move',  color: '#0055FF' },  // Blue
+    { type: 'fast attack', color: '#FF5500' }, // Red
+    { type: 'stun',       color: '#07dfe3' },  // Torquoise
+    { type: 'move',       color: '#0000FF' },  // Blue
+    { type: 'attack',     color: '#FF0000' },  // Red
+    { type: 'slow move',  color: '#5500FF' },  // Blue
+    { type: 'slow attack',color: '#FF0055' },  // Red
+    { type: 'spawn',      color: '#2ab82a' },  // Green
+    { type: 'evolve',     color: '#2ab82a' },  // Green
+    { type: 'reload',     color: '#ad00a8' },  // Purple
+    { type: 'extract',    color: '#FFD700' }  // Gold
+    
+];
+  
 const ACTIONS = {
     fast_move: {
         key: 'fast_move',       // Unique action key
@@ -18,7 +34,6 @@ const ACTIONS = {
         name: 'Fast Move',            // Display name for the client
         minRange: 1,
         maxRange: 1,
-        color: '#0000FF',        // Blue
         powerConsumption: 0,
         strengthImpact: 0,       // No direct strength impact
         applyTo: 'none', // Does not affect any units
@@ -30,7 +45,6 @@ const ACTIONS = {
         name: 'Move',            // Display name for the client
         minRange: 1,
         maxRange: 1,
-        color: '#0000FF',        // Blue
         powerConsumption: 0,
         strengthImpact: 0,       // No direct strength impact
         applyTo: 'none', // Does not affect any units
@@ -42,20 +56,18 @@ const ACTIONS = {
         name: 'Slow Move',            // Display name for the client
         minRange: 1,
         maxRange: 1,
-        color: '#0000FF',        // Blue
         powerConsumption: 0,
         strengthImpact: 0,       // No direct strength impact
         applyTo: 'none', // Does not affect any units
         self: false // Cannot be applied to self
     },
-    move_long: {
-        key: 'move_long',
-        type: 'move',
+    dash: {
+        key: 'dash',
+        type: 'fast move',
         name: 'Dash',
         minRange: 2,
         maxRange: 2,
-        color: '#0000FF',
-        powerConsumption: 2,
+        powerConsumption: 4,
         strengthImpact: 0,
         applyTo: 'none', // Does not affect any units
         self: false // Cannot be applied to self
@@ -66,7 +78,6 @@ const ACTIONS = {
         name: 'Attack',
         minRange: 1,
         maxRange: 1,
-        color: '#FF0000',        // Red
         powerConsumption: 2,
         strengthImpact: -35,     // Reduces defender's strength
         applyTo: 'enemies', // Only affects enemies
@@ -77,27 +88,25 @@ const ACTIONS = {
             impact: -35             // Damage to units in AoE tiles
         }
     },
-    slash: {
-        key: 'slash',
-        type: 'attack',
-        name: 'Slash',
-        minRange: 0,
-        maxRange: 0,
-        color: '#FF0000',        // Red
-        powerConsumption: 2,
-        strengthImpact: -35,     // Reduces defender's strength
-        applyTo: 'enemies', // Only affects enemies
-        self: false
-    },
     fast_attack: {
         key: 'fast_attack',
         type: 'fast attack',
         name: 'Fast Attack',
         minRange: 1,
         maxRange: 2,
-        color: '#FF0000',        // Red
         powerConsumption: 2,
         strengthImpact: -30,     // Reduces defender's strength
+        applyTo: 'enemies', // Only affects enemies
+        self: false
+    },
+    spit: {
+        key: 'spit',
+        type: 'fast attack',
+        name: 'Spit',
+        minRange: 1,
+        maxRange: 2,
+        powerConsumption: 1,
+        strengthImpact: -35,     // Reduces defender's strength
         applyTo: 'enemies', // Only affects enemies
         self: false
     },
@@ -107,7 +116,6 @@ const ACTIONS = {
         name: 'Passive Attack',
         minRange: 0,
         maxRange: 0,
-        color: '#FF0000',        // Red
         powerConsumption: 0,
         strengthImpact: -35,     // Reduces defender's strength
         applyTo: 'enemies', // Only affects enemies
@@ -119,7 +127,6 @@ const ACTIONS = {
         name: 'Long Attack',
         minRange: 2,
         maxRange: 2,
-        color: '#FF0000',        // Red
         powerConsumption: 2,
         strengthImpact: -35,     // Reduces defender's strength
         duration: 1,
@@ -132,7 +139,6 @@ const ACTIONS = {
         name: 'Rest',
         minRange: 0,
         maxRange: 0,
-        color: '#9C27B0',        // Purple
         powerConsumption: -1,
         strengthImpact: 0,
         applyTo: 'none', // Only affects enemies
@@ -140,13 +146,12 @@ const ACTIONS = {
     },
     regenerate: {
         key: 'regenerate',
-        type: 'attack',
+        type: 'slow attack',
         name: 'Regenerate',
         minRange: 0,
         maxRange: 0,
-        color: '#FF6347',        // Tomato
         powerConsumption: 0,
-        strengthImpact: 10,      // Increases unit's strength
+        strengthImpact: 5,      // Increases unit's strength
         applyTo: 'none', // Only affects enemies
         self: true
     },
@@ -156,7 +161,6 @@ const ACTIONS = {
         name: 'Heal',
         minRange: 1,
         maxRange: 1,
-        color: '#FF6347',        // Tomato
         powerConsumption: 2,
         strengthImpact: 20,      // Increases unit's strength
         applyTo: 'friendly', // Only affects enemies
@@ -168,7 +172,6 @@ const ACTIONS = {
         name: 'Self Heal',
         minRange: 0,
         maxRange: 0,
-        color: '#FF6347',        // Tomato
         powerConsumption: 2,
         strengthImpact: 20,      // Increases unit's strength
         applyTo: 'friendly', // Only affects enemies
@@ -180,12 +183,35 @@ const ACTIONS = {
         name: 'Spawn Zergling',
         minRange: 0,
         maxRange: 0,
-        color: '#FFD700',        // Gold
-        powerConsumption: 5,
+        powerConsumption: 3,
         strengthImpact: 0,
         applyTo: 'none', // Only affects enemies
         self: false,
         unitType: 'zergling'
+    },
+    spawn_baneling: {
+        key: 'spawn_baneling',
+        type: 'spawn',
+        name: 'Spawn Baneling',
+        minRange: 0,
+        maxRange: 0,
+        powerConsumption: 2,
+        strengthImpact: 0,
+        applyTo: 'none', // Only affects enemies
+        self: false,
+        unitType: 'baneling'
+    },
+    spawn_ravager: {
+        key: 'spawn_ravager',
+        type: 'spawn',
+        name: 'Spawn Ravager',
+        minRange: 0,
+        maxRange: 0,
+        powerConsumption: 4,
+        strengthImpact: 0,
+        applyTo: 'none', 
+        self: false,
+        unitType: 'ravager'
     },
     attack_ray: {
         key: 'attack_ray',
@@ -193,7 +219,6 @@ const ACTIONS = {
         name: 'Attack Ray',
         minRange: 1,
         maxRange: 1,
-        color: '#FF4500',        // OrangeRed
         powerConsumption: 2,
         strengthImpact: -45,     // Damage to primary target
         applyTo: 'enemies', 
@@ -210,7 +235,6 @@ const ACTIONS = {
         name: 'Mortar Attack',
         minRange: 2,
         maxRange: 2,
-        color: '#8B0000',        // DarkRed
         powerConsumption: 2,
         strengthImpact: -35,     // Damage to primary target
         applyTo: 'all', // Only affects enemies
@@ -228,7 +252,6 @@ const ACTIONS = {
         name: 'Stun',
         minRange: 0,
         maxRange: 0,
-        color: '#FF69B4', // Hot pink
         powerConsumption: 0, // Adjust as needed
         strengthImpact: 0,   // No change to strength
         applyTo: 'enemies',  // Affects enemy units
@@ -239,18 +262,28 @@ const ACTIONS = {
         key: 'explode',
         type: 'slow attack',
         name: 'Explode',
-        minRange: 0,
-        maxRange: 0,
-        color: '#FF69B4', // Hot pink
+        minRange: 1,
+        maxRange: 1,
         powerConsumption: 0, // Adjust as needed
         strengthImpact: -50,   // No change to strength
         applyTo: 'all',  // Affects enemy units
         self: true,
         areaOfEffect: {
-            directions: [0, 1, 2, 3, 4, 5],     // All directions
+            directions: [3],     // All directions
             distance: 1,         // One tile further from the targetTile
             impact: -50          // Damage to units in AoE tiles
         }
+    },
+    deconstruct: {
+        key: 'deconstruct',
+        type: 'slow attack',
+        name: 'deconstruct',
+        minRange: 0,
+        maxRange: 0,
+        powerConsumption: 0, // Adjust as needed
+        strengthImpact: -100,   // No change to strength
+        applyTo: 'none',  // Affects enemy units
+        self: true
     },
     extract_resource: {
         key: 'extract_resource',
@@ -258,35 +291,132 @@ const ACTIONS = {
         name: 'Extract Resource',
         minRange: 0,
         maxRange: 0,
-        color: '#32CD32', // LimeGreen
         powerConsumption: 1,
         strengthImpact: 0, // No direct impact on unit strength
         applyTo: 'none', // Affects tiles, not units
         self: false
-    }
+    },
+    baneling_evolve: {
+        key: "baneling_evolve",
+        name: "Baneling Evolution",
+        type: "evolve",
+        powerConsumption: 3,   
+        maxRange: 0,             // Usually 0 if the evolve happens "in place"
+        transformUnitType: "baneling"
+    },
+    build_pylon: {
+        key: "build_pylon",
+        name: "Build Pylon",
+        type: "spawn",
+        powerConsumption: 3,   
+        minRange: 0,   
+        maxRange: 1,            
+        unitType: "pylon",
+        resourceCost: {gold: 2}
+    },
+    warp_zealot: {
+        key: "warp_zealot",
+        name: "Warp Zealot",
+        type: "spawn",
+        powerConsumption: 2,   
+        minRange: 0,   
+        maxRange: 0,           
+        unitType: "zealot"
+    },
+    warp_stalker: {
+        key: "warp_stalker",
+        name: "Warp Stalker",
+        type: "spawn",
+        powerConsumption: 2,   
+        minRange: 0,   
+        maxRange: 0,            
+        unitType: "stalker"
+    },
+    warp_colossus: {
+        key: "warp_colossus",
+        name: "Warp Colossus",
+        type: "spawn",
+        powerConsumption: 3,   
+        minRange: 0,   
+        maxRange: 0,             
+        unitType: "colossus"
+    },
+    warp_probe: {
+        key: "warp_probe",
+        name: "Warp Probe",
+        type: "spawn",
+        powerConsumption: 2,   
+        minRange: 0,   
+        maxRange: 0,             
+        unitType: "probe"
+    },
+    build_factory: {
+        key: "build_factory",
+        name: "Build Factory",
+        type: "spawn",
+        powerConsumption: 2,   
+        minRange: 0,   
+        maxRange: 1,            
+        unitType: "factory",
+        resourceCost: {gold: 3}
+    },
+    build_tank: {
+        key: "build_tank",
+        name: "Build Tank",
+        type: "spawn",
+        powerConsumption: 4,   
+        minRange: 0,   
+        maxRange: 0,            
+        unitType: "tank",
+    },
+    build_ifv: {
+        key: "build_ifv",
+        name: "Build IFV",
+        type: "spawn",
+        powerConsumption: 3,   
+        minRange: 0,   
+        maxRange: 0,            
+        unitType: "ifv",
+    },
+    build_scv: {
+        key: "build_scv",
+        name: "Build SCV",
+        type: "spawn",
+        powerConsumption: 2,   
+        minRange: 0,   
+        maxRange: 0,            
+        unitType: "scv",
+    },
     // ... other actions ...
 };
 
 const UNIT_TYPES = {
-    marine: {
-        name: 'Marine',
-        strength: 100,
-        actions: ['move_short', 'attack_short', 'reload', 'extract_resource'],
+    ifv: {
+        name: 'IFV',
+        strength: 75,
+        actions: ['move_short', 'attack_short', 'reload'],
         passiveActions:['attack_passive', 'reload'],
         color: '#00FF00' // Green
     },
-    ghost: {
-        name: 'Ghost',
-        strength: 75,
+    tank: {
+        name: 'Tank',
+        strength: 100,
         actions: ['move_short', 'attack_long','reload'],
         passiveActions:['reload'],
         color: '#FFAA00' // Orange
     },
-    medic: {
-        name: 'Medic',
-        strength: 50,
-        actions: ['move_short', 'heal', 'selfHeal', 'reload', 'extract_resource'],
+    scv: {
+        name: 'SCV',
+        strength: 100,
+        actions: ['fast_move', 'build_factory', 'heal', 'selfHeal', 'reload', 'extract_resource'],
         passiveActions:['reload'],
+        color: '#FFAA00' // Orange
+    },
+    factory: {
+        name: 'Factory',
+        strength: 75,
+        actions: ['build_svc', 'build_tank', 'build_ifv', 'reload'],
+        passiveActions:[],
         color: '#FFAA00' // Orange
     },
     zergling: {
@@ -305,22 +435,22 @@ const UNIT_TYPES = {
     },
     baneling: {
         name: 'Baneling',
-        strength: 100,
+        strength: 50,
         actions: ['move_short', 'explode', 'reload'],
-        passiveActions:['reload'],
+        passiveActions:[],
         color: '#FFD700' // Gold
     },
     queen: {
         name: 'Queen',
         strength: 110,
-        actions: ['move_short', 'reload', 'spawn_zergling'],
-        passiveActions:['reload'],
+        actions: ['move_short', 'spit', 'reload', 'spawn_zergling', 'spawn_baneling', 'spawn_ravager'],
+        passiveActions:['attack_passive', 'regenerate'],
         color: '#FFD700' // Gold
     },
     zealot: {
         name: 'Zealot',
         strength: 75,
-        actions: ['move_short', 'move_long', 'reload'],
+        actions: ['move_short', 'dash', 'reload'],
         passiveActions:['stun', 'reload', 'attack_passive', 'regenerate'],
         color: '#FFD700' // Gold
     },
@@ -334,17 +464,25 @@ const UNIT_TYPES = {
     colossus: {
         name: 'Colossus',
         strength: 110,
-        actions: ['slow_move', 'attack_ray', 'reload', 'extract_resource'],
+        actions: ['slow_move', 'attack_ray', 'reload'],
         passiveActions:['reload', 'regenerate'],
         color: '#FFD700' // Gold
     },
     pylon: {
         name: 'Pylon',
         strength: 100,
-        actions: ['heal', 'reload', 'extract_resource'],
-        passiveActions:['reload'],
+        startingPower: 5,
+        actions: ['warp_zealot', 'warp_stalker', 'warp_colossus', 'warp_probe', 'deconstruct'],
+        passiveActions:[],
         color: '#FFD700' // Gold
-    }
+    },
+    probe: {
+        name: 'Probe',
+        strength: 50,
+        actions: ['move_short', 'reload', 'extract_resource', 'build_pylon'],
+        passiveActions:['reload', 'regenerate'],
+        color: '#FFD700' // Gold
+    },
 };
 
 
@@ -428,10 +566,6 @@ const TileTypes = {
     healing: {
         color: '#ff6347', // Red color for healing tile
         actions: [{ type: 'heal', healAmount: 15 }],
-    },
-    spawn: {
-        color: '#6495ED', // Blue color for spawning tile
-        actions: [{ type: 'spawn', spawnUnits: 1 }],
     },
     default: {
         color: '#e0e0e0', // Default gray tile
@@ -540,14 +674,14 @@ function generateInitialGameState() {
 
         let initialUnits;
         if (player.color == "#FF0000") { //red team
-            initialUnits = ['zergling', 'zergling', 'ravager', 'baneling', 'queen'];
-            //initialUnits = ['ravager'];
+            initialUnits = ['zergling', 'zergling', 'queen'];
+            //initialUnits = ['queen'];
         } else if (player.color == "#800080") { //purple team
-            initialUnits = ['zealot', 'zealot', 'stalker', 'colossus'];
-            //initialUnits = ['pylon'];
+            initialUnits = ['probe', 'zealot', 'zealot'];
+            //initialUnits = ['probe'];
         } else {
-            initialUnits = ['marine', 'marine', 'marine', 'medic', 'ghost'];
-            //initialUnits = ['marine']
+            initialUnits = ['scv', 'ifv', 'ifv'];
+            //initialUnits = ['scv']
         }
 
         initialUnits.forEach((unitType) => {
@@ -632,6 +766,7 @@ function spawnUnit(player, q, r, unitTypeKey) {
         console.log(`Invalid unit type: ${unitTypeKey}`);
         return;
     }
+    const power = unitType.startingPower ? unitType.startingPower : 1;
 
     const tile = game.grid[`${q},${r}`];
     if (tile) {
@@ -640,7 +775,7 @@ function spawnUnit(player, q, r, unitTypeKey) {
             playerId: player.playerId,
             strength: unitType.strength,
             tile: { q: tile.q, r: tile.r },
-            power: 1,
+            power: power,
             type: unitTypeKey,
             color: unitType.color,
             actions: unitType.actions,
@@ -740,50 +875,91 @@ function generateUnitId() {
 wss.on('connection', function connection(ws) {
     console.log('A new player connected');
 
-    if (clients.length >= MAX_PLAYERS) {
-        ws.send(JSON.stringify({ type: 'error', message: 'Game is full.' }));
-        ws.close();
-        return;
-    }
-
-    const playerId = clients.length + 1;
-    const player = {
-        playerId: playerId,
-        color: null,
-        units: [],
-        ws: ws,
-        resources: {}
-    };
-
-    game.players.push(player);
-    clients.push(ws);
-
-    // Send welcome message with assigned playerId and available colors
-    ws.send(JSON.stringify({
-        type: 'welcome',
-        playerId: playerId,
-        availableColors: game.availableColors
-    }));
+    ws.send(JSON.stringify({ type: 'request_username', message: 'Please enter your username to continue.' }));
 
     ws.on('message', function incoming(message) {
         const data = JSON.parse(message);
+        console.log(data)
+
+        if (data.type === 'username') {
+            const username = data.username.trim();
+            const existingPlayer = game.players.find(p => p.username === username);
+
+            if (existingPlayer) {
+                // Reconnection logic
+                existingPlayer.ws = ws;
+                ws.playerId = existingPlayer.playerId;
+                clients[existingPlayer.playerId - 1] = ws;
+                console.log(`Player ${username} reconnected.`);
+                // 1) Let the client know they reconnected
+                ws.send(JSON.stringify({
+                    type: 'reconnected',
+                    message: 'Welcome back!',
+                    playerId: existingPlayer.playerId
+                }));
+
+                // 2) Send the actions_list again
+                ws.send(JSON.stringify({
+                    type: 'actions_list',
+                    actions: game.actions, // Send actions list
+                    action_order: actionOrder
+                }));
+                broadcastGameState();
+            } else {
+                // New connection logic
+                if (clients.length >= MAX_PLAYERS) {
+                    ws.send(JSON.stringify({ type: 'error', message: 'Game is full.' }));
+                    ws.close();
+                    return;
+                }
+
+                const playerId = clients.length + 1;
+                const player = {
+                    playerId: playerId,
+                    username: username,
+                    color: null,
+                    units: [],
+                    ws: ws,
+                    resources: {}
+                };
+
+                game.players.push(player);
+                clients.push(ws);
+                ws.playerId = playerId;
+
+                console.log(`Player ${username} joined the game.`);
+
+                // Send welcome message
+                ws.send(JSON.stringify({
+                    type: 'welcome',
+                    playerId: playerId,
+                    message: 'Welcome to the game!',
+                    availableColors: game.availableColors
+                }));
+            }
+        }
 
         if (data.type === 'color_selection') {
-            handleColorSelection(playerId, data);
+            handleColorSelection(ws.playerId, data);
         }
 
         if (data.type === 'action') {
-            handleAction(playerId, data.action);
+            handleAction(ws.playerId, data.action);
         }
 
         if (data.type === 'restart') {
-            handleRestart(playerId);
+            handleRestart(ws.playerId);
         }
     });
 
     ws.on('close', function () {
-        console.log(`Player ${playerId} disconnected`);
-        handleDisconnect(playerId);
+        const player = game.players.find(p => p.playerId === ws.playerId);
+        if (player) {
+            console.log(`Player ${player.username} disconnected.`);
+            handleDisconnect(ws.playerId);
+        } else {
+            console.log('A player disconnected, but no matching username was found.');
+        }
     });
 });
 
@@ -836,7 +1012,8 @@ function initializeGame() {
     // Additionally, send the ACTIONS list to all clients
     broadcast({
         type: 'actions_list',
-        actions: game.actions
+        actions: game.actions, // Send actions list
+        action_order: actionOrder
     });
 
     console.log("ACTIONS list sent to all clients.");
@@ -876,11 +1053,35 @@ function handleAction(playerId, action) {
         return;
     }
 
-    // Check if the unit has enough power
+    // Step 4: Check if the unit has enough power
     if (unit.power < serverActionDef.powerConsumption) {
         console.log(`Unit ${action.unitId} does not have enough power for action ${actionKey}.`);
         game.players[playerIndex].ws.send(JSON.stringify({ type: 'error', message: `Not enough power for action ${actionKey}.` }));
         return;
+    }
+
+    // Step 5: Check if the tile has the required resources
+    const tile = game.grid[`${unit.tile.q},${unit.tile.r}`];
+    if (!tile) {
+        console.log(`Tile (${unit.tile.q}, ${unit.tile.r}) not found.`);
+        game.players[playerIndex].ws.send(JSON.stringify({ type: 'error', message: `Invalid tile: (${unit.tile.q}, ${unit.tile.r}).` }));
+        return;
+    }
+
+    if (serverActionDef.resourceCost) {
+        for (const [resource, amount] of Object.entries(serverActionDef.resourceCost)) {
+            if ((tile.resourceStorage[resource] || 0) < amount) {
+                console.log(`Not enough ${resource} on tile (${tile.q}, ${tile.r}).`);
+                game.players[playerIndex].ws.send(JSON.stringify({ type: 'error', message: `Not enough ${resource} on tile.` }));
+                return;
+            }
+        }
+
+        // Deduct resources from the tile
+        for (const [resource, amount] of Object.entries(serverActionDef.resourceCost)) {
+            tile.resourceStorage[resource] -= amount;
+            console.log(`Deducted ${amount} ${resource} from tile (${tile.q}, ${tile.r}). Remaining: ${tile.resourceStorage[resource]}`);
+        }
     }
 
     // For actions with maxRange > 0, validate action.path
@@ -1099,12 +1300,11 @@ function executeTurn() {
         actionsByType[actionType].push(actionData);
     });
 
-    // Define processing order based on action types
-    const actionOrder = ['fast move', 'fast attack', 'stun', 'move', 'attack', 'slow move', 'slow attack', 'spawn', 'reload', 'extract'];
-
-    actionOrder.forEach(actionType => {
-        const actions = actionsByType[actionType] || [];
-        switch (actionType) {
+    actionOrder.forEach(({ type, color }) => {
+        // type: e.g. 'move', 'attack', ...
+        // color: e.g. '#0000FF', ...
+        const actions = actionsByType[type] || [];
+        switch (type) {
             case 'fast move':
             case 'move':
             case 'slow move':
@@ -1128,6 +1328,9 @@ function executeTurn() {
                 break;
             case 'extract':
                 processExtractResourceActions(actions);
+                break;
+            case 'evolve':
+                processEvolveActions(actions);
                 break;
             // Add more cases here for new action types
             default:
@@ -1703,6 +1906,46 @@ function processExtractResourceActions(extractActions) {
     });
 }
 
+function processEvolveActions(evolveActions) {
+    if (evolveActions.length === 0) return;
+  
+    console.log(`Processing ${evolveActions.length} evolve actions...`);
+  
+    evolveActions.forEach(actionData => {
+      const { unit, actionDefinition } = actionData;
+      
+      // 1) Get the target type from the action definition
+      const newUnitTypeKey = actionDefinition.transformUnitType;
+      const newUnitType = UNIT_TYPES[newUnitTypeKey];
+  
+      if (!newUnitType) {
+        console.log(`No definition found for target type '${newUnitTypeKey}'.`);
+        return;
+      }
+      
+      // 2) Transform the unit
+      console.log(
+        `Unit ${unit.unitId} (type: ${unit.type}) evolves into '${newUnitType.name}'.`
+      );
+  
+      // Update the unit’s type, name, strength, actions, etc.
+      unit.type = newUnitTypeKey;
+      unit.actions = [...newUnitType.actions];
+      unit.passiveActions = [...newUnitType.passiveActions];
+      unit.color = newUnitType.color;
+      
+      // 3) Record the evolve action in lastTurnActions for the client
+      game.lastTurnActions.push({
+        type: actionDefinition.key, // e.g., "baneling_evolve"
+        unitId: unit.unitId,
+        fromType: unit.type,   // if you want to log old/new
+        toType: newUnitTypeKey,
+        playerId: unit.playerId,
+        tile: { q: unit.tile.q, r: unit.tile.r }
+      });
+    });
+  }
+
 function getPathTiles(path){
     let currentTile = game.grid[`${path[0].q},${path[0].r}`];
 
@@ -1752,9 +1995,20 @@ function processSpawnAction(actionData) {
         return;
     }
 
+    // Convert the path array into actual Tile objects and validate adjacency
+    let pathTiles = getPathTiles(path);
+    if (!pathTiles) {
+        console.log('Invalid path for spawn action.');
+        return;
+    }
+
+    // The last tile in the path is where the new unit will be spawned
+    const targetTile = pathTiles[pathTiles.length - 1];
+
     const unitType = actionDefinition.unitType;
-    spawnUnit(player, attacker.tile.q, attacker.tile.r, unitType);
-    console.log(`Player ${player.playerId} spawned a ${unitType} unit on tile (${attacker.tile.q}, ${attacker.tile.r}).`);
+    // Actually spawn the unit on the target tile instead of attacker’s tile
+    spawnUnit(player, targetTile.q, targetTile.r, unitType);
+    console.log(`Player ${player.playerId} spawned a ${unitType} unit on tile (${targetTile.q}, ${targetTile.r}).`);
 
     // Record the spawn for visualization
     game.lastTurnActions.push({
@@ -1839,6 +2093,7 @@ function broadcastGameState() {
         grid: {},
         players: game.players.map(player => ({
             playerId: player.playerId,
+            username: player.username, // Include username
             color: player.color,
             units: player.units.map(unit => ({
                 unitId: unit.unitId,
@@ -1898,34 +2153,11 @@ function broadcastGameState() {
 }
 
 function handleDisconnect(playerId) {
-    // Remove player from the game
-    const playerIndex = playerId - 1;
-    const player = game.players[playerIndex];
+    console.log(`Player ${playerId} disconnected. Waiting for possible reconnection.`);
+    const player = game.players.find(p => p.playerId === playerId);
+
     if (player) {
-        // Remove player's units from the grid
-        /*console.log(player.units)
-        player.units.forEach(unit => {
-            const tile = unit.tile;
-            if (tile) {
-                const unitIndex = tile.units.findIndex(u => u.unitId === unit.unitId);
-                if (unitIndex !== -1) {
-                    tile.units.splice(unitIndex, 1);
-                }
-                // Optionally update ownership based on remaining units
-                if (tile.units.length === 0) {
-                    tile.owner = null;
-                } else {
-                    tile.owner = tile.units[0].playerId;
-                }
-            }
-        });*/
-
-        // Remove player from the players array
-        game.players.splice(playerIndex, 1);
-        clients.splice(playerIndex, 1);
-
-        // Broadcast updated game state
-        broadcastGameState();
+        player.ws = null; // Nullify WebSocket for reconnection
     }
 }
 
@@ -1957,7 +2189,8 @@ function resetGame() {
     // Resend the ACTIONS list
     broadcast({
         type: 'actions_list',
-        actions: game.actions
+        actions: game.actions, // Send actions list
+        action_order: actionOrder
     });
 
     console.log("Game has been reset and ACTIONS list resent to all clients.");

@@ -315,6 +315,23 @@
             const message = JSON.parse(event.data);
             console.log('Message from server:', message);
 
+            if (message.type === 'request_username') {
+                // Prompt the user to enter their username
+                const username = prompt(message.message);
+
+                if (username && username.trim() !== '') {
+                    // Send the entered username back to the server
+                    socket.send(JSON.stringify({ type: 'username', username: username.trim() }));
+                } else {
+                    alert('Username cannot be empty. Please reload and try again.');
+                }
+            }
+
+            if (message.type === 'reconnected') {
+                console.log(message.message); // "Welcome back!"
+                playerId = message.playerId; // Update the playerId
+            }
+
             if (message.type === 'welcome') {
                 playerId = message.playerId;
                 showColorSelection(message.availableColors);
@@ -322,8 +339,17 @@
 
             if (message.type === 'actions_list') {
                 // Store the received actions list
-                window.ACTIONS = message.actions; // Make ACTIONS globally accessible
-                console.log('Received ACTIONS list from server:', ACTIONS);
+                window.ACTIONS = message.actions; // e.g., { move_short: { type: 'move', ... }, ... }
+                
+                // Store the action order array (each item has { type, color } )
+                // Example: [{ type: 'fast move', color: '#0000FF' }, { type: 'fast attack', color: '#FF0000' }, ...]
+                window.ACTION_ORDER = message.action_order; 
+
+                console.log('Received ACTIONS list from server:', window.ACTIONS);
+                console.log('Received ACTION_ORDER list from server:', window.ACTION_ORDER);
+
+                // If you still want to display the list in the UI:
+                createActionOrderList(window.ACTION_ORDER); 
             }
 
             if (message.type === 'color_selected') {
@@ -544,6 +570,62 @@
             svg.unitGroup = unitGroup;
         }
 
+        function createActionOrderList(actionOrder) {
+            // Locate the control buttons container
+            const controlButtonsContainer = document.querySelector('.control-buttons');
+            if (!controlButtonsContainer) return; // Safety check
+
+            // Remove any old Action Order UI (optional)
+            const oldActionOrderContainer = document.querySelector('.action-order-container');
+            if (oldActionOrderContainer) {
+                controlButtonsContainer.removeChild(oldActionOrderContainer);
+            }
+
+            // Create a container for the action order list
+            const actionOrderContainer = document.createElement('div');
+            actionOrderContainer.classList.add('action-order-container');
+            actionOrderContainer.style.overflowY = 'auto'; // Enable vertical scrolling
+            actionOrderContainer.style.maxHeight = '200px'; // Set a maximum height
+            actionOrderContainer.style.marginTop = '10px'; // Add some space from the control buttons
+            actionOrderContainer.style.padding = '10px';
+            actionOrderContainer.style.backgroundColor = '#fff';
+            actionOrderContainer.style.border = '1px solid #ccc';
+            actionOrderContainer.style.borderRadius = '5px';
+            actionOrderContainer.style.boxShadow = '0 0 5px rgba(0, 0, 0, 0.1)';
+
+            // Add a title for the action order list
+            const title = document.createElement('h4');
+            title.textContent = 'Action Order';
+            title.style.margin = '0';
+            title.style.marginBottom = '10px';
+            title.style.textAlign = 'center';
+            actionOrderContainer.appendChild(title);
+
+            // Create a list element
+            const list = document.createElement('ul');
+            list.style.listStyleType = 'none'; // Remove bullet points
+            list.style.padding = '0';          // Remove padding
+            list.style.margin = '0';           // Remove margin
+
+            // Populate the list with action order items
+            actionOrder.forEach(({ type, color }) => {
+                const listItem = document.createElement('li');
+                listItem.textContent = type;         // Use the 'type' for display
+                listItem.style.padding = '5px 0';    // Spacing between items
+                listItem.style.borderBottom = '1px solid #eee';
+                listItem.style.color = color;        // Text color from the action’s color
+                listItem.style.fontWeight = 'bold';  // Make it stand out
+
+                list.appendChild(listItem);
+            });
+
+            // Append the list to the container
+            actionOrderContainer.appendChild(list);
+
+            // Append the action order container to the control buttons container
+            controlButtonsContainer.appendChild(actionOrderContainer);
+        }
+
         // Update player info to include collected resources
         function updatePlayerInfo(playerId, playerColor) {
             const playerInfo = document.querySelector('.player-info');
@@ -738,7 +820,7 @@
                 gameState.lastTurnActions.forEach(action => {
                     switch (action.type) {
                         case 'move_short':
-                        case 'move_long':
+                        case 'dash':
                         case 'fast_move':
                             renderTrailLine(action);
                             break;
@@ -747,6 +829,8 @@
                         case 'fast_attack':
                         case 'attack_mortar':
                         case 'attack_ray':
+                        case 'explode':
+                        case 'spit':
                             renderAttackWithLines(action);
                             break;
                         case 'move_attack':
@@ -755,9 +839,9 @@
                         case 'attack_blast':
                             renderAttackBlast(action);
                             break;
-                        case 'explode':
+                        /*case 'explode':
                             renderAttackMortar(action);
-                            break;
+                            break;*/
                         // Add cases for other action types if needed
                     }
                 });
@@ -1578,11 +1662,30 @@
             });
             actionButtonsContainer.classList.add('action-buttons');
 
+            // Build a map from action type -> { index, color }
+            const orderMap = getActionOrderMap();
+
             // Retrieve active and passive actions
-            const availableActions = unit.actions.map(actionKey => window.ACTIONS[actionKey]).filter(Boolean);
-            const passiveActions = unit.passiveActions
-                ? unit.passiveActions.map(actionKey => window.ACTIONS[actionKey]).filter(Boolean)
-                : [];
+            let availableActions = unit.actions
+                .map(actionKey => window.ACTIONS[actionKey])
+                .filter(Boolean);
+            let passiveActions = (unit.passiveActions || [])
+                .map(actionKey => window.ACTIONS[actionKey])
+                .filter(Boolean);
+
+            // Sort active actions by the index in actionOrder
+            availableActions.sort((a, b) => {
+                const aIndex = orderMap[a.type]?.index ?? 9999;
+                const bIndex = orderMap[b.type]?.index ?? 9999;
+                return aIndex - bIndex;
+            });
+
+            // Sort passive actions similarly
+            passiveActions.sort((a, b) => {
+                const aIndex = orderMap[a.type]?.index ?? 9999;
+                const bIndex = orderMap[b.type]?.index ?? 9999;
+                return aIndex - bIndex;
+            });
 
             // Define direction names mapping
             const directionNames = {
@@ -1599,7 +1702,10 @@
                 const actionButton = document.createElement('button');
                 actionButton.textContent = `${actionDef.name} (${actionDef.powerConsumption})`;
                 actionButton.classList.add('action-button');
-                actionButton.style.backgroundColor = actionDef.color;
+                
+                // Lookup color from the order map instead of from the actionDef
+                const buttonColor = orderMap[actionDef.type]?.color ?? '#ccc';  
+                actionButton.style.backgroundColor = buttonColor;
 
                 if (isPassive) {
                     // Passive action styling and disabling
@@ -1613,14 +1719,27 @@
                 // Add tooltip for both active and passive actions
                 let tooltip = `Action: ${actionDef.name}\nMax Range: ${actionDef.maxRange}`;
                 tooltip += `\nPower Consumption: ${actionDef.powerConsumption}`;
+                tooltip += `\nType: ${actionDef.type}`;
                 if (actionDef.strengthImpact) {
                     tooltip += `\nStrength Impact: ${actionDef.strengthImpact}`;
+                }
+                if (actionDef.resourceCost) {
+                    const resourceLines = Object.entries(actionDef.resourceCost)
+                        .map(([resource, amount]) => `${resource}: ${amount}`)
+                        .join('\n'); // Create new lines for each resource
+                    tooltip += `\nResource Cost:\n${resourceLines}`;
                 }
                 if (actionDef.areaOfEffect && actionDef.areaOfEffect.directions.length > 0) {
                     const aoeDirs = actionDef.areaOfEffect.directions
                         .map(dir => directionNames[dir] || `Direction ${dir}`)
                         .join(', ');
                     tooltip += `\nArea of Effect Directions: ${aoeDirs}`;
+                }
+                if (actionDef.applyTo) {
+                    tooltip += `\nApplies To: ${actionDef.applyTo}`;
+                }
+                if (actionDef.self) {
+                    tooltip += `\nCan Apply to Self: ${actionDef.self ? 'Yes' : 'No'}`;
                 }
                 actionButton.title = tooltip;
 
@@ -1727,6 +1846,17 @@
             gameContainer.appendChild(actionButtonsContainer);
         }
 
+        function getActionOrderMap() {
+            const orderMap = {};
+            if (window.ACTION_ORDER) {
+                window.ACTION_ORDER.forEach((ao, i) => {
+                    // ao = { type: 'move', color: '#0000FF' }, etc.
+                    orderMap[ao.type] = { index: i, color: ao.color };
+                });
+            }
+            return orderMap;
+        }
+
         // Helper function to capitalize first letter
         function capitalizeFirstLetter(string) {
             return string.charAt(0).toUpperCase() + string.slice(1);
@@ -1815,11 +1945,15 @@
         function highlightPossibleTiles() {
             unhighlightAllTiles();
 
+            // 1) Look up the color from actionOrder based on currentActionDef.type
+            const orderMap = getActionOrderMap();
+            const actionColor = orderMap[currentActionDef.type]?.color ?? '#ccc';
+
             // Highlight selected tiles in the movement path
             for (let i = 1; i < movementPath.length; i++) {
                 const tile = movementPath[i];
                 const hex = svg.querySelector(`polygon[data-q="${tile.q}"][data-r="${tile.r}"]`);
-                fillTile(hex, currentActionDef.color, 1.0);
+                fillTile(hex, actionColor, 1.0);  // Use the actionOrder color
                 hex.classList.add('tile-selected');
             }
 
@@ -1831,7 +1965,7 @@
                 const neighborTile = gameState.grid[neighborKey.key];
                 if (neighborTile && !movementPath.includes(neighborTile)) {
                     const hex = svg.querySelector(`polygon[data-q="${neighborTile.q}"][data-r="${neighborTile.r}"]`);
-                    fillTile(hex, currentActionDef.color, 0.5); // 50% opacity
+                    fillTile(hex, actionColor, 0.5); // 50% opacity
                     hex.classList.add('tile-possible');
                 }
             }
