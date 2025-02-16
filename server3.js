@@ -1,497 +1,28 @@
+const {
+    ACTIONS,
+    UNIT_TYPES,
+    TileTypes,
+    NUM_PLAYERS,
+    MAX_PLAYERS,
+    MAX_POWER_PER_UNIT,
+    GRID_SIZE,
+    actionOrder,
+    hexDirections,
+    cubeDirections,
+    FACTIONS
+  } = require('./gameConfig');
 const WebSocket = require('ws');
 
 const PORT = process.env.PORT || 8080;
 const wss = new WebSocket.Server({ port: PORT });
 //const wss = new WebSocket.Server({ host: '0.0.0.0', port: 8080 });
 
-const NUM_PLAYERS = 2; // Change to minimum number of players
-const MAX_PLAYERS = 6; // New constant to set the maximum players allowed
-
-const MAX_POWER_PER_UNIT = 5; // Set this to your desired maximum power per unit
-const GRID_SIZE = 4;
-   
-// Define processing order based on action types
-// Define processing order and color for each action type
-const actionOrder = [
-    { type: 'fast move',  color: '#0055FF' },  // Blue
-    { type: 'fast attack', color: '#FF5500' }, // Red
-    { type: 'stun',       color: '#07dfe3' },  // Torquoise
-    { type: 'move',       color: '#0000FF' },  // Blue
-    { type: 'attack',     color: '#FF0000' },  // Red
-    { type: 'slow move',  color: '#5500FF' },  // Blue
-    { type: 'slow attack',color: '#FF0055' },  // Red
-    { type: 'spawn',      color: '#2ab82a' },  // Green
-    { type: 'evolve',     color: '#2ab82a' },  // Green
-    { type: 'reload',     color: '#ad00a8' },  // Purple
-    { type: 'extract',    color: '#FFD700' }  // Gold
-    
-];
-  
-const ACTIONS = {
-    fast_move: {
-        key: 'fast_move',       // Unique action key
-        type: 'fast move',            // Action type
-        name: 'Fast Move',            // Display name for the client
-        minRange: 1,
-        maxRange: 1,
-        powerConsumption: 0,
-        strengthImpact: 0,       // No direct strength impact
-        applyTo: 'none', // Does not affect any units
-        self: false // Cannot be applied to self
-    },
-    move_short: {
-        key: 'move_short',       // Unique action key
-        type: 'move',            // Action type
-        name: 'Move',            // Display name for the client
-        minRange: 1,
-        maxRange: 1,
-        powerConsumption: 0,
-        strengthImpact: 0,       // No direct strength impact
-        applyTo: 'none', // Does not affect any units
-        self: false // Cannot be applied to self
-    },
-    slow_move: {
-        key: 'slow_move',       // Unique action key
-        type: 'slow move',            // Action type
-        name: 'Slow Move',            // Display name for the client
-        minRange: 1,
-        maxRange: 1,
-        powerConsumption: 0,
-        strengthImpact: 0,       // No direct strength impact
-        applyTo: 'none', // Does not affect any units
-        self: false // Cannot be applied to self
-    },
-    dash: {
-        key: 'dash',
-        type: 'fast move',
-        name: 'Dash',
-        minRange: 2,
-        maxRange: 2,
-        powerConsumption: 4,
-        strengthImpact: 0,
-        applyTo: 'none', // Does not affect any units
-        self: false // Cannot be applied to self
-    },
-    attack_short: {
-        key: 'attack_short',
-        type: 'attack',
-        name: 'Attack',
-        minRange: 1,
-        maxRange: 1,
-        powerConsumption: 2,
-        strengthImpact: -35,     // Reduces defender's strength
-        applyTo: 'enemies', // Only affects enemies
-        self: false,
-        areaOfEffect: {
-            directions: [2], // Relative directions
-            distance: 1,            // Distance from targetTile
-            impact: -35             // Damage to units in AoE tiles
-        }
-    },
-    fast_attack: {
-        key: 'fast_attack',
-        type: 'fast attack',
-        name: 'Fast Attack',
-        minRange: 1,
-        maxRange: 2,
-        powerConsumption: 2,
-        strengthImpact: -30,     // Reduces defender's strength
-        applyTo: 'enemies', // Only affects enemies
-        self: false
-    },
-    spit: {
-        key: 'spit',
-        type: 'fast attack',
-        name: 'Spit',
-        minRange: 1,
-        maxRange: 2,
-        powerConsumption: 1,
-        strengthImpact: -35,     // Reduces defender's strength
-        applyTo: 'enemies', // Only affects enemies
-        self: false
-    },
-    attack_passive: {
-        key: 'attack_passive',
-        type: 'slow attack',
-        name: 'Passive Attack',
-        minRange: 0,
-        maxRange: 0,
-        powerConsumption: 0,
-        strengthImpact: -35,     // Reduces defender's strength
-        applyTo: 'enemies', // Only affects enemies
-        self: false
-    },
-    attack_long: {
-        key: 'attack_long',
-        type: 'attack',
-        name: 'Long Attack',
-        minRange: 2,
-        maxRange: 2,
-        powerConsumption: 2,
-        strengthImpact: -35,     // Reduces defender's strength
-        duration: 1,
-        applyTo: 'enemies', // Only affects enemies
-        self: false
-    },
-    reload: {
-        key: 'reload',
-        type: 'reload',
-        name: 'Rest',
-        minRange: 0,
-        maxRange: 0,
-        powerConsumption: -1,
-        strengthImpact: 0,
-        applyTo: 'none', // Only affects enemies
-        self: false
-    },
-    regenerate: {
-        key: 'regenerate',
-        type: 'slow attack',
-        name: 'Regenerate',
-        minRange: 0,
-        maxRange: 0,
-        powerConsumption: 0,
-        strengthImpact: 5,      // Increases unit's strength
-        applyTo: 'none', // Only affects enemies
-        self: true
-    },
-    heal: {
-        key: 'heal',
-        type: 'attack',
-        name: 'Heal',
-        minRange: 1,
-        maxRange: 1,
-        powerConsumption: 2,
-        strengthImpact: 20,      // Increases unit's strength
-        applyTo: 'friendly', // Only affects enemies
-        self: true
-    },
-    selfHeal: {
-        key: 'selfHeal',
-        type: 'attack',
-        name: 'Self Heal',
-        minRange: 0,
-        maxRange: 0,
-        powerConsumption: 2,
-        strengthImpact: 20,      // Increases unit's strength
-        applyTo: 'friendly', // Only affects enemies
-        self: true
-    },
-    spawn_zergling: {
-        key: 'spawn_zergling',
-        type: 'spawn',
-        name: 'Spawn Zergling',
-        minRange: 0,
-        maxRange: 0,
-        powerConsumption: 3,
-        strengthImpact: 0,
-        applyTo: 'none', // Only affects enemies
-        self: false,
-        unitType: 'zergling'
-    },
-    spawn_baneling: {
-        key: 'spawn_baneling',
-        type: 'spawn',
-        name: 'Spawn Baneling',
-        minRange: 0,
-        maxRange: 0,
-        powerConsumption: 2,
-        strengthImpact: 0,
-        applyTo: 'none', // Only affects enemies
-        self: false,
-        unitType: 'baneling'
-    },
-    spawn_ravager: {
-        key: 'spawn_ravager',
-        type: 'spawn',
-        name: 'Spawn Ravager',
-        minRange: 0,
-        maxRange: 0,
-        powerConsumption: 4,
-        strengthImpact: 0,
-        applyTo: 'none', 
-        self: false,
-        unitType: 'ravager'
-    },
-    attack_ray: {
-        key: 'attack_ray',
-        type: 'slow attack',
-        name: 'Attack Ray',
-        minRange: 1,
-        maxRange: 1,
-        powerConsumption: 2,
-        strengthImpact: -45,     // Damage to primary target
-        applyTo: 'enemies', 
-        self: false,
-        areaOfEffect: {
-            directions: [4, 2], // Relative directions
-            distance: 1,            // Distance from targetTile
-            impact: -45             // Damage to units in AoE tiles
-        }
-    },
-    attack_mortar: {
-        key: 'attack_mortar',
-        type: 'attack',
-        name: 'Mortar Attack',
-        minRange: 2,
-        maxRange: 2,
-        powerConsumption: 2,
-        strengthImpact: -35,     // Damage to primary target
-        applyTo: 'all', // Only affects enemies
-        self: false,
-        delay: 1, // Delay in turns
-        areaOfEffect: {
-            directions: [3],     // All directions
-            distance: 1,         // One tile further from the targetTile
-            impact: -35          // Damage to units in AoE tiles
-        }
-    },
-    stun: {
-        key: 'stun',
-        type: 'stun',
-        name: 'Stun',
-        minRange: 0,
-        maxRange: 0,
-        powerConsumption: 0, // Adjust as needed
-        strengthImpact: 0,   // No change to strength
-        applyTo: 'enemies',  // Affects enemy units
-        self: false,         // Does not affect self
-        disableActions: ['move', 'attack'] // Action types to disable
-    },
-    explode: {
-        key: 'explode',
-        type: 'slow attack',
-        name: 'Explode',
-        minRange: 1,
-        maxRange: 1,
-        powerConsumption: 0, // Adjust as needed
-        strengthImpact: -50,   // No change to strength
-        applyTo: 'all',  // Affects enemy units
-        self: true,
-        areaOfEffect: {
-            directions: [3],     // All directions
-            distance: 1,         // One tile further from the targetTile
-            impact: -50          // Damage to units in AoE tiles
-        }
-    },
-    deconstruct: {
-        key: 'deconstruct',
-        type: 'slow attack',
-        name: 'deconstruct',
-        minRange: 0,
-        maxRange: 0,
-        powerConsumption: 0, // Adjust as needed
-        strengthImpact: -100,   // No change to strength
-        applyTo: 'none',  // Affects enemy units
-        self: true
-    },
-    extract_resource: {
-        key: 'extract_resource',
-        type: 'extract',
-        name: 'Extract Resource',
-        minRange: 0,
-        maxRange: 0,
-        powerConsumption: 1,
-        strengthImpact: 0, // No direct impact on unit strength
-        applyTo: 'none', // Affects tiles, not units
-        self: false
-    },
-    baneling_evolve: {
-        key: "baneling_evolve",
-        name: "Baneling Evolution",
-        type: "evolve",
-        powerConsumption: 3,   
-        maxRange: 0,             // Usually 0 if the evolve happens "in place"
-        transformUnitType: "baneling"
-    },
-    build_pylon: {
-        key: "build_pylon",
-        name: "Build Pylon",
-        type: "spawn",
-        powerConsumption: 3,   
-        minRange: 0,   
-        maxRange: 1,            
-        unitType: "pylon",
-        resourceCost: {gold: 2}
-    },
-    warp_zealot: {
-        key: "warp_zealot",
-        name: "Warp Zealot",
-        type: "spawn",
-        powerConsumption: 2,   
-        minRange: 0,   
-        maxRange: 0,           
-        unitType: "zealot"
-    },
-    warp_stalker: {
-        key: "warp_stalker",
-        name: "Warp Stalker",
-        type: "spawn",
-        powerConsumption: 2,   
-        minRange: 0,   
-        maxRange: 0,            
-        unitType: "stalker"
-    },
-    warp_colossus: {
-        key: "warp_colossus",
-        name: "Warp Colossus",
-        type: "spawn",
-        powerConsumption: 3,   
-        minRange: 0,   
-        maxRange: 0,             
-        unitType: "colossus"
-    },
-    warp_probe: {
-        key: "warp_probe",
-        name: "Warp Probe",
-        type: "spawn",
-        powerConsumption: 2,   
-        minRange: 0,   
-        maxRange: 0,             
-        unitType: "probe"
-    },
-    build_factory: {
-        key: "build_factory",
-        name: "Build Factory",
-        type: "spawn",
-        powerConsumption: 2,   
-        minRange: 0,   
-        maxRange: 1,            
-        unitType: "factory",
-        resourceCost: {gold: 3}
-    },
-    build_tank: {
-        key: "build_tank",
-        name: "Build Tank",
-        type: "spawn",
-        powerConsumption: 4,   
-        minRange: 0,   
-        maxRange: 0,            
-        unitType: "tank",
-    },
-    build_ifv: {
-        key: "build_ifv",
-        name: "Build IFV",
-        type: "spawn",
-        powerConsumption: 3,   
-        minRange: 0,   
-        maxRange: 0,            
-        unitType: "ifv",
-    },
-    build_scv: {
-        key: "build_scv",
-        name: "Build SCV",
-        type: "spawn",
-        powerConsumption: 2,   
-        minRange: 0,   
-        maxRange: 0,            
-        unitType: "scv",
-    },
-    // ... other actions ...
-};
-
-const UNIT_TYPES = {
-    ifv: {
-        name: 'IFV',
-        strength: 75,
-        actions: ['move_short', 'attack_short', 'reload'],
-        passiveActions:['attack_passive', 'reload'],
-        color: '#00FF00' // Green
-    },
-    tank: {
-        name: 'Tank',
-        strength: 100,
-        actions: ['move_short', 'attack_long','reload'],
-        passiveActions:['reload'],
-        color: '#FFAA00' // Orange
-    },
-    scv: {
-        name: 'SCV',
-        strength: 100,
-        actions: ['fast_move', 'build_factory', 'heal', 'selfHeal', 'reload', 'extract_resource'],
-        passiveActions:['reload'],
-        color: '#FFAA00' // Orange
-    },
-    factory: {
-        name: 'Factory',
-        strength: 75,
-        actions: ['build_svc', 'build_tank', 'build_ifv', 'reload'],
-        passiveActions:[],
-        color: '#FFAA00' // Orange
-    },
-    zergling: {
-        name: 'Zergling',
-        strength: 70 ,
-        actions: ['fast_move', 'reload', 'extract_resource'],
-        passiveActions:['stun', 'attack_passive'],
-        color: '#0000FF' // Blue
-    },
-    ravager: {
-        name: 'Ravager',
-        strength: 100,
-        actions: ['move_short', 'attack_mortar', 'reload'],
-        passiveActions:['reload'],
-        color: '#9C27B0' // Purple
-    },
-    baneling: {
-        name: 'Baneling',
-        strength: 50,
-        actions: ['move_short', 'explode', 'reload'],
-        passiveActions:[],
-        color: '#FFD700' // Gold
-    },
-    queen: {
-        name: 'Queen',
-        strength: 110,
-        actions: ['move_short', 'spit', 'reload', 'spawn_zergling', 'spawn_baneling', 'spawn_ravager'],
-        passiveActions:['attack_passive', 'regenerate'],
-        color: '#FFD700' // Gold
-    },
-    zealot: {
-        name: 'Zealot',
-        strength: 75,
-        actions: ['move_short', 'dash', 'reload'],
-        passiveActions:['stun', 'reload', 'attack_passive', 'regenerate'],
-        color: '#FFD700' // Gold
-    },
-    stalker: {
-        name: 'Stalker',
-        strength: 70,
-        actions: ['move_short', 'fast_attack', 'reload'],
-        passiveActions:['reload', 'regenerate'],
-        color: '#FFD700' // Gold
-    },
-    colossus: {
-        name: 'Colossus',
-        strength: 110,
-        actions: ['slow_move', 'attack_ray', 'reload'],
-        passiveActions:['reload', 'regenerate'],
-        color: '#FFD700' // Gold
-    },
-    pylon: {
-        name: 'Pylon',
-        strength: 100,
-        startingPower: 5,
-        actions: ['warp_zealot', 'warp_stalker', 'warp_colossus', 'warp_probe', 'deconstruct'],
-        passiveActions:[],
-        color: '#FFD700' // Gold
-    },
-    probe: {
-        name: 'Probe',
-        strength: 50,
-        actions: ['move_short', 'reload', 'extract_resource', 'build_pylon'],
-        passiveActions:['reload', 'regenerate'],
-        color: '#FFD700' // Gold
-    },
-};
-
-
 let game = {
     grid: {},  // Game grid
     players: [], // Array of player objects: { playerId, color, units, ws }
     turn: 1,
     playerActions: Array(NUM_PLAYERS).fill(null).map(() => []),  // Actions for each player
-    availableColors: ['#4CAF50', '#0000FF', '#FFA500', '#800080', '#FF0000', '#00FFFF'], //green, blue, orange, purple, red, cyan
+    //availableColors: ['#4CAF50', '#0000FF', '#FFA500', '#800080', '#FF0000', '#00FFFF'], //green, blue, orange, purple, red, cyan
     lastTurnActions: [], // Stores actions of the last turn
     delayedActions: [], // New array to store delayed actions
     actions: ACTIONS, // Add the ACTIONS object to the game state
@@ -553,39 +84,6 @@ class Tile {
     }
 }
 
-// Tile Type Library
-const TileTypes = {
-    wood: {
-        color: '#8B4513', // Brown color for wood tile
-        resources: ['wood'],
-    },
-    gold: {
-        color: '#ffd700', // Gold color for gold tile
-        resources: ['gold'],
-    },
-    healing: {
-        color: '#ff6347', // Red color for healing tile
-        actions: [{ type: 'heal', healAmount: 15 }],
-    },
-    default: {
-        color: '#e0e0e0', // Default gray tile
-        resources: [],
-        actions: [],
-    },
-    // Adding a "water" tile type that has a blue hue and no resources but might heal units slightly
-    water: {
-        color: '#00BFFF', // Light blue color for water tile
-        actions: [{ type: 'heal', healAmount: 5 }],  // Minor healing action
-    },
-    // Adding a "forest" tile type that provides both wood and heals units slightly
-    forest: {
-        color: '#228B22',  // Forest green color
-        resources: ['wood'],  // Provides wood resource
-        actions: [{ type: 'heal', healAmount: 10 }]  // Minor healing
-    }
-
-};
-
 // Function to create a tile from a tile type
 function createTileFromType(q, r, s, tileTypeKey, height, resourceQuantities) {
     const tileType = TileTypes[tileTypeKey] || TileTypes.default;  // Fallback to default if not found
@@ -642,15 +140,7 @@ function generateInitialGameState() {
                 } else if (q === 0 && r === 2) {
                     tileType = 'gold';
                     resourceQuantities = { gold: 5 };
-                } /*else if (q === 3 && r === -1) {
-                    height = 1;
-                } else if (q === 3 && r === -2) {
-                    height = 1;
-                } else if (q === -3 && r === 1) {
-                    height = 2;
-                } else if (q === -3 && r === 0) {
-                    height = 1;
-                }*/
+                }
 
                 // Create the tile using the predefined type
                 const tile = createTileFromType(q, r, s, tileType, height, resourceQuantities);
@@ -665,27 +155,17 @@ function generateInitialGameState() {
     // Dynamically determine the starting positions based on the number of players
     const startPositions = getStartPositions(game.players.length);
 
-    // Place initial units for each player
+    // Place initial units for each player based on their selected faction
     for (let i = 0; i < game.players.length; i++) {
         const [startQ, startR] = startPositions[i];
         const player = game.players[i];
 
-        console.log(player.color);
+        console.log(`Player ${player.playerId} chose faction: ${player.faction}`);
 
-        let initialUnits;
-        if (player.color == "#FF0000") { //red team
-            initialUnits = ['zergling', 'zergling', 'queen'];
-            //initialUnits = ['queen'];
-        } else if (player.color == "#800080") { //purple team
-            initialUnits = ['probe', 'zealot', 'zealot'];
-            //initialUnits = ['probe'];
-        } else {
-            initialUnits = ['scv', 'ifv', 'ifv'];
-            //initialUnits = ['scv']
-        }
-
+        // Use the faction's defined initial units from FACTIONS configuration
+        const initialUnits = FACTIONS[player.faction].initialUnits;
         initialUnits.forEach((unitType) => {
-            spawnUnit(player, startQ, startR, unitType);
+        spawnUnit(player, startQ, startR, unitType);
         });
     }
 }
@@ -914,14 +394,17 @@ wss.on('connection', function connection(ws) {
                 }
 
                 const playerId = clients.length + 1;
+                // Initialize player with a null faction (to be selected next)
                 const player = {
                     playerId: playerId,
                     username: username,
-                    color: null,
+                    faction: null,       // Faction will be selected by the player
+                    color: null,         // Will be assigned based on faction selection
                     units: [],
                     ws: ws,
                     resources: {}
                 };
+  
 
                 game.players.push(player);
                 clients.push(ws);
@@ -929,18 +412,18 @@ wss.on('connection', function connection(ws) {
 
                 console.log(`Player ${username} joined the game.`);
 
-                // Send welcome message
+                // Send welcome message with available factions for selection
                 ws.send(JSON.stringify({
                     type: 'welcome',
                     playerId: playerId,
-                    message: 'Welcome to the game!',
-                    availableColors: game.availableColors
+                    message: 'Welcome to the game! Please select a faction.',
+                    availableFactions: FACTIONS
                 }));
             }
         }
-
-        if (data.type === 'color_selection') {
-            handleColorSelection(ws.playerId, data);
+        
+        if (data.type === 'faction_selection') {
+            handleFactionSelection(ws.playerId, data);
         }
 
         if (data.type === 'action') {
@@ -963,39 +446,36 @@ wss.on('connection', function connection(ws) {
     });
 });
 
-function handleColorSelection(playerId, data) {
+// --- NEW: Handle faction selection --- //
+function handleFactionSelection(playerId, data) {
     const player = game.players.find(p => p.playerId === playerId);
     if (!player) return;
-
-    const { color } = data;
-
-    // Validate color availability
-    if (!game.availableColors.includes(color)) {
-        player.ws.send(JSON.stringify({ type: 'error', message: 'Color not available.' }));
-        return;
+  
+    const { faction } = data; // expecting data.faction to be a key such as 'red', 'purple', etc.
+    if (!FACTIONS[faction]) {
+      player.ws.send(JSON.stringify({ type: 'error', message: 'Invalid faction selection.' }));
+      return;
     }
-
-    // Assign color, number of units, and strength to the player
-    player.color = color;
-    game.availableColors = game.availableColors.filter(c => c !== color);
-
-    console.log(`Player ${playerId} selected color ${color}`);
-
-    // Notify player that color selection was successful
-    player.ws.send(JSON.stringify({ type: 'color_selected', color: color }));
-
-    // Notify all other players about the color being taken
-    broadcast({
-        type: 'color_taken',
-        playerId: playerId,
-        color: color,
-        message: `Player ${playerId} has taken the color ${color}.`
-    });
-
-    // Check if all players have selected colors, units, and strength
-    if (game.players.every(p => p.color)) {
-        game.playerActions = Array(game.players.length).fill(null).map(() => [])
-        initializeGame();        
+  
+    // Assign faction to the player and set their color based on faction configuration
+    player.faction = faction;
+    player.color = FACTIONS[faction].color;
+  
+    console.log(`Player ${playerId} selected faction ${faction}`);
+  
+    // Notify the player that faction selection was successful along with faction details
+    player.ws.send(JSON.stringify({ 
+      type: 'faction_selected', 
+      faction: faction, 
+      factionInfo: FACTIONS[faction] 
+    }));
+  
+    // (Optionally, you can broadcast to other players that this player has selected a faction)
+  
+    // If all players have selected a faction, start the game
+    if (game.players.every(p => p.faction)) {
+      game.playerActions = Array(game.players.length).fill(null).map(() => []);
+      initializeGame();        
     }
 }
 
@@ -1003,18 +483,18 @@ function handleColorSelection(playerId, data) {
 function initializeGame() {
     console.log("All players have selected colors. Initializing game...");
 
-    // Initialize game grid and units
-    generateInitialGameState();
-
-    // Broadcast initial game state to all players
-    broadcastGameState();
-
     // Additionally, send the ACTIONS list to all clients
     broadcast({
         type: 'actions_list',
         actions: game.actions, // Send actions list
         action_order: actionOrder
     });
+
+    // Initialize game grid and units
+    generateInitialGameState();
+
+    // Broadcast initial game state to all players
+    broadcastGameState();
 
     console.log("ACTIONS list sent to all clients.");
 }
@@ -1341,6 +821,9 @@ function executeTurn() {
     // After processing all actions, remove defeated units and calculate resources
     removeDefeatedUnits();
     calculateResources();
+
+    // Grow resources on tiles
+    growResources();
 
     // Clear player actions for the next turn
     game.playerActions = Array(game.players.length).fill(null).map(() => []);
@@ -1711,24 +1194,6 @@ function getAoETiles(currentTile, targetTile, areaOfEffect) {
     return aoeTiles;
 }
 
-const hexDirections = [
-    { dq: 1, dr: 0 },    // Direction 0
-    { dq: 1, dr: -1 },   // Direction 1
-    { dq: 0, dr: -1 },   // Direction 2
-    { dq: -1, dr: 0 },   // Direction 3
-    { dq: -1, dr: 1 },   // Direction 4
-    { dq: 0, dr: 1 }     // Direction 5
-];
-
-const cubeDirections = [
-    { x: 1, y: -1, z: 0 }, // Direction 0
-    { x: 1, y: 0, z: -1 }, // Direction 1
-    { x: 0, y: 1, z: -1 }, // Direction 2
-    { x: -1, y: 1, z: 0 }, // Direction 3
-    { x: -1, y: 0, z: 1 }, // Direction 4
-    { x: 0, y: -1, z: 1 }  // Direction 5
-];
-
 function getDirectionIndex(fromTile, toTile) {
     // If attacking self, return a default value (e.g., -1)
     if (fromTile.q === toTile.q && fromTile.r === toTile.r) {
@@ -1786,6 +1251,16 @@ function processMovementActions(movementActions) {
 
             // Move the unit step by step
             moveUnit(unit, nextTile);
+
+            // If the action involves moving resources, transfer them to the new tile
+            if (actionDefinition.movesResources === true) {
+                Object.keys(currentTile.resourceStorage).forEach(resourceName => {
+                    const quantity = currentTile.resourceStorage[resourceName] || 0;
+                    nextTile.resourceStorage[resourceName] = (nextTile.resourceStorage[resourceName] || 0) + quantity;
+                    currentTile.resourceStorage[resourceName] = 0; // Clear the resource on the original tile
+                    console.log(`Moved ${quantity} of ${resourceName} from (${currentTile.q}, ${currentTile.r}) to (${nextTile.q}, ${nextTile.r}).`);
+                });
+            }
 
             // Record movement for visualization
             game.lastTurnActions.push({
@@ -1977,6 +1452,37 @@ function getPathTiles(path){
     }
 
     return pathTiles;
+}
+
+function growResources() {
+    console.log("Growing resources on tiles with growthFrequency...");
+
+    // Iterate over all tiles in the game grid
+    for (const key in game.grid) {
+        const tile = game.grid[key];
+
+        // Check if the tile type has a growthFrequency and maxResource
+        const tileType = TileTypes[tile.type];
+        if (tileType && tileType.growthFrequency && tileType.maxResource) {
+            // Calculate the growth condition based on the current turn
+            if (game.turn % tileType.growthFrequency === 0) {
+                tile.resources.forEach(resourceName => {
+                    const currentQuantity = tile.resourceQuantities[resourceName] || 0;
+
+                    // Only grow the resource if it's below maxResource
+                    if (currentQuantity < tileType.maxResource) {
+                        tile.resourceQuantities[resourceName] = Math.min(
+                            currentQuantity + 1,
+                            tileType.maxResource
+                        );
+                        console.log(
+                            `Resource '${resourceName}' on tile (${tile.q}, ${tile.r}) grew to ${tile.resourceQuantities[resourceName]}`
+                        );
+                    }
+                });
+            }
+        }
+    }
 }
 
 function processSpawnAction(actionData) {
@@ -2180,18 +1686,18 @@ function resetGame() {
     game.playerActions = Array(game.players.length).fill(null).map(() => []);
     game.lastTurnActions = [];
 
-    // Reinitialize the game grid and units
-    generateInitialGameState();
-
-    // Broadcast updated game state
-    broadcastGameState();
-
     // Resend the ACTIONS list
     broadcast({
         type: 'actions_list',
         actions: game.actions, // Send actions list
         action_order: actionOrder
     });
+
+    // Reinitialize the game grid and units
+    generateInitialGameState();
+
+    // Broadcast updated game state
+    broadcastGameState();
 
     console.log("Game has been reset and ACTIONS list resent to all clients.");
 }

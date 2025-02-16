@@ -304,8 +304,8 @@
 
         // Connect to the WebSocket server
 
-        const socket = new WebSocket('wss://strategy-game.onrender.com'); // render server
-        //const socket = new WebSocket('ws://127.0.0.1:8080'); //localhost
+        //const socket = new WebSocket('wss://strategy-game.onrender.com'); // render server
+        const socket = new WebSocket('ws://127.0.0.1:8080'); //localhost
         //const socket = new WebSocket('ws://192.168.0.182:8080'); // Joseph's IP
         //const socket = new WebSocket('ws://192.168.0.106:8080'); // Manav's IP
         //const socket = new WebSocket('ws://192.168.0.102:8080'); // Quinn's IP
@@ -332,9 +332,11 @@
                 playerId = message.playerId; // Update the playerId
             }
 
+            // --- UPDATED: Handle welcome message with faction info ---
             if (message.type === 'welcome') {
                 playerId = message.playerId;
-                showColorSelection(message.availableColors);
+                // Instead of showing available colors, show the available factions.
+                showFactionSelection(message.availableFactions);
             }
 
             if (message.type === 'actions_list') {
@@ -386,7 +388,7 @@
                 gameState = message.state;
                 updateDisplay();
                 // Remove or hide the color selection UI after game starts
-                removeColorSelection();
+                removeFactionSelection();
             }
 
             if (message.type === 'player_action') {
@@ -406,21 +408,11 @@
             }
         });
 
-        function removeColorSelection() {
-            const colorSelection = document.querySelector('.color-selection');
-            if (colorSelection) {
-                gameContainer.removeChild(colorSelection);
+        function removeFactionSelection() {
+            const factionSelection = document.querySelector('.faction-selection');
+            if (factionSelection) {
+                gameContainer.removeChild(factionSelection);
             }
-        }
-
-        // Send color selection to the server
-        function sendColorSelection(color) {
-            const data = {
-                type: 'color_selection',
-                color: color
-            };
-
-            socket.send(JSON.stringify(data));
         }
 
         // Send player actions to the server
@@ -664,12 +656,6 @@
                 gameContainer.removeChild(controlButtons);
             }
 
-            // Remove color-selection
-            const colorSelection = document.querySelector('.color-selection');
-            if (colorSelection) {
-                gameContainer.removeChild(colorSelection);
-            }
-
             // Remove log-container
             const logContainer = document.querySelector('.log-container');
             if (logContainer) {
@@ -691,58 +677,131 @@
             return container;
         }
 
-        // Show color selection UI
-        function showColorSelection(availableColors) {
-            const colorSelectionContainer = createContainer('color-selection', {
-                top: '10px',
-                left: '10px',
-                display: 'flex',
-                flexDirection: 'column'
-            });
-
-            // Create and append title
-            const title = document.createElement('p');
-            title.innerHTML = '<strong>Select Your Color, Number of Units, and Unit Strength:</strong>';
-            colorSelectionContainer.appendChild(title);
-
-            // Create a container for color buttons with horizontal layout
-            const buttonsContainer = document.createElement('div');
-            buttonsContainer.classList.add('color-buttons');
-
-            availableColors.forEach((color) => {
-                const colorButton = document.createElement('button');
-                colorButton.classList.add('action-button');
-                colorButton.style.backgroundColor = color;
-                colorButton.style.width = '30px';
-                colorButton.style.height = '30px';
-                colorButton.style.padding = '0'; // Remove padding for uniform size
-                colorButton.setAttribute('data-color', color); // Store color in data attribute
-                colorButton.title = color;
-
-                colorButton.addEventListener('click', () => {
-
-                    sendColorSelection(color);
-                    // Highlight the selected color button
-                    colorButton.style.outline = '3px solid black';
-                    colorButton.style.border = '2px solid #000';
-
-                    // Disable other buttons
-                    buttonsContainer.querySelectorAll('button').forEach(btn => {
-                        if (btn !== colorButton) {
-                            btn.disabled = true;
-                            btn.style.opacity = 0.5;
-                        }
-                    });
-                });
-
-                buttonsContainer.appendChild(colorButton);
-            });
-
-            colorSelectionContainer.appendChild(buttonsContainer);
-
-            gameContainer.appendChild(colorSelectionContainer);
+        // Helper function to send the selected faction to the server
+        function sendFactionSelection(factionKey) {
+            const data = {
+                type: 'faction_selection',
+                faction: factionKey  // e.g., "red", "purple", etc.
+            };
+            socket.send(JSON.stringify(data));
         }
 
+        function showFactionSelection(availableFactions) {
+            // Create a container for faction selection with centered positioning and a max width
+            const factionSelectionContainer = createContainer('faction-selection', {
+                position: 'absolute',
+                top: '50%',
+                left: '50%',
+                transform: 'translate(-50%, -50%)',
+                maxWidth: '400px',
+                width: '90%',
+                padding: '20px',
+                backgroundColor: 'rgba(255, 255, 255, 0.95)',
+                borderRadius: '8px',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '15px'
+            });
+
+            // Create and append a title for the selection
+            const title = document.createElement('p');
+            title.innerHTML = '<strong>Select Your Faction:</strong>';
+            title.style.textAlign = 'center';
+            factionSelectionContainer.appendChild(title);
+
+            // Create a container for the faction buttons
+            const buttonsContainer = document.createElement('div');
+            buttonsContainer.classList.add('faction-buttons');
+            buttonsContainer.style.display = 'flex';
+            buttonsContainer.style.flexWrap = 'wrap';
+            buttonsContainer.style.gap = '10px';
+            buttonsContainer.style.justifyContent = 'center';
+
+            // Create a details pane to show the faction description and units
+            const detailsPane = document.createElement('div');
+            detailsPane.classList.add('faction-details');
+            detailsPane.style.border = '1px solid #ccc';
+            detailsPane.style.borderRadius = '5px';
+            detailsPane.style.padding = '10px';
+            detailsPane.style.minHeight = '80px';
+            detailsPane.style.backgroundColor = '#fafafa';
+            detailsPane.innerHTML = '<em>Select a faction to see details</em>';
+
+            // Create a submit button (disabled until a faction is selected)
+            const submitButton = document.createElement('button');
+            submitButton.textContent = 'Submit Selection';
+            submitButton.classList.add('action-button');
+            submitButton.style.backgroundColor = '#4CAF50';
+            submitButton.style.color = '#fff';
+            submitButton.style.padding = '10px';
+            submitButton.style.border = 'none';
+            submitButton.style.borderRadius = '5px';
+            submitButton.style.cursor = 'pointer';
+            submitButton.disabled = true; // initially disabled
+
+            let selectedFactionKey = null;
+
+            // Iterate over each faction in the availableFactions object
+            for (const factionKey in availableFactions) {
+                if (availableFactions.hasOwnProperty(factionKey)) {
+                    const faction = availableFactions[factionKey];
+
+                    // Create a button for the faction
+                    const factionButton = document.createElement('button');
+                    factionButton.classList.add('action-button');
+                    factionButton.style.backgroundColor = faction.color;
+                    factionButton.style.color = '#fff';
+                    factionButton.style.padding = '10px';
+                    factionButton.style.borderRadius = '5px';
+                    factionButton.style.border = 'none';
+                    factionButton.style.cursor = 'pointer';
+                    factionButton.style.minWidth = '120px';
+                    factionButton.innerHTML = `<strong>${factionKey.toUpperCase()}</strong>`;
+
+                    // When a faction button is clicked, update the details pane and enable submit
+                    factionButton.addEventListener('click', () => {
+                        selectedFactionKey = factionKey;
+                        // Update details pane with the faction's description and units (if available)
+                        let detailsHTML = `<strong>${factionKey.toUpperCase()}</strong><br>`;
+                        detailsHTML += `<em>${faction.description || 'No description available.'}</em><br>`;
+                        if (faction.units) {
+                            detailsHTML += `<strong>Units:</strong> ${faction.units.join(', ')}`;
+                        }
+                        detailsPane.innerHTML = detailsHTML;
+
+                        // Visually indicate the selected faction
+                        // First, remove highlighting from any other buttons
+                        buttonsContainer.querySelectorAll('button').forEach(btn => {
+                            btn.style.outline = 'none';
+                        });
+                        // Highlight this button
+                        factionButton.style.outline = '3px solid black';
+
+                        // Enable the submit button
+                        submitButton.disabled = false;
+                    });
+
+                    buttonsContainer.appendChild(factionButton);
+                }
+            }
+
+            // When the submit button is clicked, send the faction selection to the server
+            submitButton.addEventListener('click', () => {
+                if (selectedFactionKey) {
+                    sendFactionSelection(selectedFactionKey);
+                    // Optionally disable the entire selection UI
+                    factionSelectionContainer.remove();
+                }
+            });
+
+            // Append all elements to the faction selection container
+            factionSelectionContainer.appendChild(buttonsContainer);
+            factionSelectionContainer.appendChild(detailsPane);
+            factionSelectionContainer.appendChild(submitButton);
+
+            // Append the faction selection container to your main game container
+            gameContainer.appendChild(factionSelectionContainer);
+        }
 
         // Update the game display based on the game state
         function updateDisplay() {
@@ -874,59 +933,98 @@
         }
 
         function renderTileUnits(q, r, units, x, y) {
-            // Determine if multiple players are on the same tile
-            const TILE_LABEL_LIMIT = 5; // Maximum number of unit labels before using a tooltip
+            const TILE_LABEL_LIMIT = 5;
             const unitCount = units.length;
             const uniquePlayers = new Set(units.map(unit => unit.playerId));
-            let fillColor = '#000'; // Default color (black)
-
+            let fillColor = '#000';
+            
             if (uniquePlayers.size === 1) {
-                // Single player on the tile
+                // Use the color of the single player
                 const playerId = units[0].playerId;
                 fillColor = getPlayerColor(playerId);
             } else {
-                // Multiple players on the tile - apply rainbow gradient
+                // For multiple players, use a rainbow gradient
                 fillColor = 'url(#rainbowGradient)';
             }
+            
+            // Separate units by mobility
+            const mobileUnits = units.filter(unit => unitHasMovementAction(unit));
+            const nonMobileUnits = units.filter(unit => !unitHasMovementAction(unit));
 
-            // Create the unit circle
-            const unitCircle = document.createElementNS(svgNS, 'circle');
-            unitCircle.setAttribute('cx', x);
-            unitCircle.setAttribute('cy', y);
-            unitCircle.setAttribute('r', TILE_SIZE / 3); // Adjusted radius for visibility
-            unitCircle.setAttribute('fill', fillColor);
-            unitCircle.setAttribute('class', 'unit unit-circle');
-
-            // Create the unit count text
+            // For non-mobile units, draw a filled hexagon with a black border.
+            if (nonMobileUnits.length > 0) {
+                const hexRadius = TILE_SIZE / 2; // Bigger than the circle (which uses TILE_SIZE/3)
+                const hex = document.createElementNS(svgNS, 'polygon');
+                hex.setAttribute('points', hexagonPoints(x, y, hexRadius));
+                hex.setAttribute('fill', fillColor);
+                hex.setAttribute('stroke', 'black');
+                hex.setAttribute('stroke-width', '2');
+                svg.unitGroup.appendChild(hex);
+            }
+            
+            // For mobile units, draw the circle (this will appear on top of the hexagon if both types exist)
+            if (mobileUnits.length > 0) {
+                const unitCircle = document.createElementNS(svgNS, 'circle');
+                unitCircle.setAttribute('cx', x);
+                unitCircle.setAttribute('cy', y);
+                unitCircle.setAttribute('r', TILE_SIZE / 3); // Unit circle radius
+                unitCircle.setAttribute('fill', fillColor);
+                unitCircle.setAttribute('stroke', 'black');
+                unitCircle.setAttribute('stroke-width', '2');
+                unitCircle.setAttribute('class', 'unit unit-circle');
+                // Optionally, add a title for details:
+                unitCircle.setAttribute(
+                    'title',
+                    `Units: ${mobileUnits.map(unit => `${unit.type} (${unit.unitId})`).join(', ')}`
+                );
+                svg.unitGroup.appendChild(unitCircle);
+            }
+            
+            // Draw the count text (centered) regardless of which representation is shown.
             const unitText = document.createElementNS(svgNS, 'text');
             unitText.setAttribute('x', x);
-            unitText.setAttribute('y', y + 5); // Adjust for vertical centering
+            unitText.setAttribute('y', y + 5);
             unitText.textContent = unitCount;
             unitText.setAttribute('class', 'unit unit-text');
-
+            svg.unitGroup.appendChild(unitText);
+            
+            // Optionally, add a label below if there are few units on the tile.
             if (units.length <= TILE_LABEL_LIMIT) {
-                // Add text labels for each unit under the circle
                 const labelText = units.map(unit => unit.type[0]).join(' ');
                 const unitLabel = document.createElementNS(svgNS, 'text');
                 unitLabel.setAttribute('x', x);
-                unitLabel.setAttribute('y', y + TILE_SIZE / 2); // Position below the circle
+                unitLabel.setAttribute('y', y + TILE_SIZE / 2);
                 unitLabel.setAttribute('class', 'unit-label');
                 unitLabel.setAttribute('fill', '#000');
                 unitLabel.setAttribute('font-size', '10');
                 unitLabel.setAttribute('text-anchor', 'middle');
                 unitLabel.textContent = labelText;
                 svg.unitGroup.appendChild(unitLabel);
-            } else {
-                // Add tooltip for too many units
-                unitCircle.setAttribute(
-                    'title',
-                    `Units: ${units.map(unit => `${unit.type} (${unit.unitId})`).join(', ')}`
-                );
             }
+        }
 
-            // Append unit elements to the unit group
-            svg.unitGroup.appendChild(unitCircle);
-            svg.unitGroup.appendChild(unitText);
+        function hexagonPoints(x, y, radius) {
+            let points = [];
+            for (let i = 0; i < 6; i++) {
+                // Using -30° offset so the hexagon is flat on top
+                let angleDeg = 60 * i - 30;
+                let angleRad = Math.PI / 180 * angleDeg;
+                let px = x + radius * Math.cos(angleRad);
+                let py = y + radius * Math.sin(angleRad);
+                points.push(`${px},${py}`);
+            }
+            return points.join(' ');
+        }
+
+        function unitHasMovementAction(unit) {
+            // Define the movement types that qualify as “mobile”
+            const movementTypes = ['fast move', 'slow move', 'move'];
+            if (!unit.actions) return false;
+            // Check if any of the unit's actions have a type matching one of the movement types.
+            return unit.actions.some(actionKey => {
+                const action = window.ACTIONS && window.ACTIONS[actionKey];
+                return action && movementTypes.includes(action.type);
+            });
         }
 
         function renderTrailLine(action) {
