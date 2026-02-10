@@ -1,0 +1,14 @@
+[gd_resource type="Resource" script_class="UnitDefinition" format=3 uid="uid://di37b3hbh35g7"]
+
+[ext_resource type="SpriteFrames" uid="uid://bp04urvxoxrjp" path="res://src/unit/art/mage/mage_spriteframes.tres" id="1_4u05d"]
+[ext_resource type="Script" uid="uid://r4e3cec6no81" path="res://src/unit/definitions/unit_definition.gd" id="1_bk3mn"]
+[ext_resource type="PackedScene" uid="uid://rk5v4108hjoh" path="res://src/unit/type_components/mage/mage_attack_flame_generator.tscn" id="3_eyu1m"]
+
+[resource]
+script = ExtResource("1_bk3mn")
+name = "Mage"
+type = 2
+frames = ExtResource("1_4u05d")
+type_components = Array[PackedScene]([ExtResource("3_eyu1m")])
+move_action_keys = Array[String](["move_short"])
+ability_action_keys = Array[String](["attack_area_adjacent"])

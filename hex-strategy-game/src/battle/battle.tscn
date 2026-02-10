@@ -1,0 +1,123 @@
+[gd_scene format=3 uid="uid://dv61bs82ppcx"]
+
+[ext_resource type="Script" uid="uid://brgtutmjv4lis" path="res://src/battle/battle.gd" id="1_g48xb"]
+[ext_resource type="PackedScene" uid="uid://dik7k0k7k27bp" path="res://src/battle/nodes/units/units.tscn" id="2_5hg2x"]
+[ext_resource type="Script" uid="uid://63cpfytfswqo" path="res://src/maps/hex_map.gd" id="2_hexmap"]
+[ext_resource type="PackedScene" uid="uid://0r543lk32lwo" path="res://src/maps/highlights/cell_highlights.tscn" id="3_b2wmv"]
+[ext_resource type="PackedScene" uid="uid://bvh861ymx55wu" path="res://src/unit/unit.tscn" id="3_qxq8g"]
+[ext_resource type="Resource" path="res://src/unit/definitions/ghost.tres" id="6_bcf76"]
+[ext_resource type="Resource" uid="uid://di37b3hbh35g7" path="res://src/unit/definitions/mage.tres" id="6_hpbej"]
+[ext_resource type="Resource" uid="uid://cgkxdpau8vmsu" path="res://src/unit/definitions/peasant.tres" id="6_r3dr5"]
+[ext_resource type="Resource" uid="uid://da4gxe2vdp43a" path="res://src/unit/definitions/knight.tres" id="7_u5ntj"]
+[ext_resource type="Resource" path="res://src/unit/definitions/zergling.tres" id="10_zergling"]
+[ext_resource type="Script" path="res://src/battle/turn_ui.gd" id="8_turn_ui"]
+[ext_resource type="Script" path="res://src/battle/action_order_panel.gd" id="12_action_order"]
+[ext_resource type="PackedScene" path="res://src/battle/action_selector.tscn" id="9_action_sel"]
+[ext_resource type="PackedScene" path="res://src/battle/units_panel.tscn" id="10_units_panel"]
+[ext_resource type="PackedScene" path="res://src/battle/replay_summary_panel.tscn" id="11_replay_summary"]
+
+[node name="battle" type="Node2D" unique_id=1832505682]
+script = ExtResource("1_g48xb")
+
+[node name="hex_map" type="Node2D" parent="." unique_id=1374663872]
+unique_name_in_owner = true
+script = ExtResource("2_hexmap")
+spacing = 14
+tile_radius = 14
+hex_radius = 5
+
+[node name="cell_highlights" parent="." unique_id=480632735 instance=ExtResource("3_b2wmv")]
+
+[node name="units" parent="." unique_id=180554752 instance=ExtResource("2_5hg2x")]
+unique_name_in_owner = true
+y_sort_enabled = true
+z_index = 1
+
+[node name="player" type="Node2D" parent="units" unique_id=886526951]
+y_sort_enabled = true
+
+[node name="unit3" parent="units/player" unique_id=326951243 instance=ExtResource("3_qxq8g")]
+position = Vector2(120, 140)
+starting_cell = Vector2i(1, 0)
+def = ExtResource("7_u5ntj")
+
+[node name="unit4" parent="units/player" unique_id=889983063 instance=ExtResource("3_qxq8g")]
+position = Vector2(90, 170)
+starting_cell = Vector2i(0, 1)
+def = ExtResource("6_bcf76")
+
+[node name="unit2" parent="units/player" unique_id=542164254 instance=ExtResource("3_qxq8g")]
+position = Vector2(90, 110)
+starting_cell = Vector2i(0, 0)
+def = ExtResource("6_hpbej")
+
+[node name="opponent" type="Node2D" parent="units" unique_id=1456144295]
+y_sort_enabled = true
+
+[node name="unit3" parent="units/opponent" unique_id=750133373 instance=ExtResource("3_qxq8g")]
+position = Vector2(220, 170)
+starting_cell = Vector2i(-1, 1)
+def = ExtResource("10_zergling")
+
+[node name="nonplayer" type="Node2D" parent="units" unique_id=1663815428]
+
+[node name="Camera2D" type="Camera2D" parent="." unique_id=1248478273]
+position = Vector2(170, 150)
+zoom = Vector2(2.5, 2.5)
+
+[node name="turn_ui" type="CanvasLayer" parent="."]
+script = ExtResource("8_turn_ui")
+
+[node name="action_order_panel" type="PanelContainer" parent="turn_ui"]
+anchors_preset = 4
+anchor_top = 0.0
+anchor_bottom = 0.0
+offset_left = 10.0
+offset_top = 10.0
+offset_right = 180.0
+offset_bottom = -10.0
+script = ExtResource("12_action_order")
+
+[node name="list" type="VBoxContainer" parent="turn_ui/action_order_panel"]
+layout_mode = 2
+theme_override_constants/separation = 4
+
+[node name="action_selector" parent="turn_ui" instance=ExtResource("9_action_sel")]
+
+[node name="units_panel" parent="turn_ui" instance=ExtResource("10_units_panel")]
+visible = false
+
+[node name="replay_summary_panel" parent="turn_ui" instance=ExtResource("11_replay_summary")]
+visible = false
+
+[node name="turn_panel" type="PanelContainer" parent="turn_ui"]
+anchors_preset = 7
+anchor_left = 1.0
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -140.0
+offset_top = -160.0
+offset_right = -20.0
+offset_bottom = -90.0
+
+[node name="vbox" type="VBoxContainer" parent="turn_ui/turn_panel"]
+layout_mode = 2
+
+[node name="turn_label" type="Label" parent="turn_ui/turn_panel/vbox"]
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 1, 1, 1)
+text = "Turn 1"
+horizontal_alignment = 1
+
+[node name="execute_button" type="Button" parent="turn_ui/turn_panel/vbox"]
+layout_mode = 2
+text = "Execute Turn"
+
+[node name="replay_button" type="Button" parent="turn_ui/turn_panel/vbox"]
+layout_mode = 2
+text = "Replay Turn"
+
+[node name="scenarios_button" type="Button" parent="turn_ui/turn_panel/vbox"]
+layout_mode = 2
+text = "Scenarios"

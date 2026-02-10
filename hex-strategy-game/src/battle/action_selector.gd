@@ -1,0 +1,107 @@
+extends PanelContainer
+## Action selector UI for the current unit. Shows action buttons; selecting one
+## filters the board options to that action only (strategy_game_v8 style).
+
+@onready var unit_label: Label = $margin/vbox/unit_label
+@onready var move_buttons: HFlowContainer = $margin/vbox/move_group/buttons
+@onready var ability_buttons: HFlowContainer = $margin/vbox/ability_group/buttons
+@onready var passive_list: VBoxContainer = $margin/vbox/passive_group/passive_list
+@onready var show_all_btn: Button = $margin/vbox/show_all_btn
+
+var _current_unit: Unit
+var _selected_action_key: String = ""
+
+func _ready() -> void:
+	EventBus.unit_selected_for_planning.connect(_on_unit_selected)
+	show_all_btn.pressed.connect(_on_show_all_pressed)
+	hide()
+
+func _on_unit_selected(unit: Unit) -> void:
+	_current_unit = unit
+	_selected_action_key = ""
+	_update_display()
+
+func _update_display() -> void:
+	if _current_unit == null:
+		hide()
+		return
+	show()
+	unit_label.text = "%s (%d/%d HP)" % [_current_unit.def.name, _current_unit.health, _current_unit.max_health]
+	show_all_btn.visible = not _selected_action_key.is_empty()
+	_rebuild_buttons()
+
+func _rebuild_buttons() -> void:
+	_clear_buttons(move_buttons)
+	_clear_buttons(ability_buttons)
+	for c in passive_list.get_children():
+		c.queue_free()
+	if _current_unit == null:
+		return
+	var def: UnitDefinition = _current_unit.def
+	for key in def.move_action_keys:
+		_add_action_button(move_buttons, key, true)
+	for key in def.ability_action_keys:
+		# Hide energy-consuming abilities when unit has no energy (e.g. ghost/marine out of ammo)
+		var config: Dictionary = Actions.get_action_config(key)
+		var power: int = int(config.get("power_consumption", 0))
+		if power > 0 and _current_unit.max_energy > 0 and _current_unit.energy <= 0:
+			continue
+		_add_action_button(ability_buttons, key, false)
+	for key in def.passive_action_keys:
+		var config: Dictionary = Actions.get_action_config(key)
+		var name_str: String = config.get("name", key)
+		var info := Label.new()
+		info.text = "  • %s" % name_str
+		info.add_theme_font_size_override("font_size", 12)
+		info.add_theme_color_override("font_color", Color(0.75, 0.75, 0.75))
+		passive_list.add_child(info)
+
+func _clear_buttons(container: Control) -> void:
+	for c in container.get_children():
+		c.queue_free()
+
+func _add_action_button(parent: Control, action_key: String, _is_move: bool) -> void:
+	var config: Dictionary = Actions.ACTION_CONFIGS.get(action_key, {})
+	var name_str: String = config.get("name", action_key)
+	var color_hex: String = config.get("color", "#888888")
+	var btn := Button.new()
+	btn.text = name_str
+	btn.custom_minimum_size = Vector2(90, 36)
+	btn.pressed.connect(_on_action_pressed.bind(action_key))
+	var bg := StyleBoxFlat.new()
+	bg.bg_color = Color(color_hex)
+	bg.corner_radius_top_left = 4
+	bg.corner_radius_top_right = 4
+	bg.corner_radius_bottom_right = 4
+	bg.corner_radius_bottom_left = 4
+	btn.add_theme_stylebox_override("normal", bg)
+	btn.add_theme_color_override("font_color", Color.WHITE)
+	if action_key == _selected_action_key:
+		var sel := StyleBoxFlat.new()
+		sel.bg_color = Color(color_hex).lightened(0.2)
+		sel.corner_radius_top_left = 4
+		sel.corner_radius_top_right = 4
+		sel.corner_radius_bottom_right = 4
+		sel.corner_radius_bottom_left = 4
+		sel.border_width_left = 2
+		sel.border_width_right = 2
+		sel.border_width_top = 2
+		sel.border_width_bottom = 2
+		sel.border_color = Color.WHITE
+		btn.add_theme_stylebox_override("normal", sel)
+	parent.add_child(btn)
+
+func _on_action_pressed(action_key: String) -> void:
+	if _selected_action_key == action_key:
+		_selected_action_key = ""
+	else:
+		_selected_action_key = action_key
+	show_all_btn.visible = not _selected_action_key.is_empty()
+	EventBus.action_key_selected.emit(_selected_action_key)
+	_rebuild_buttons()
+
+func _on_show_all_pressed() -> void:
+	_selected_action_key = ""
+	show_all_btn.visible = false
+	EventBus.action_key_selected.emit("")
+	_rebuild_buttons()
