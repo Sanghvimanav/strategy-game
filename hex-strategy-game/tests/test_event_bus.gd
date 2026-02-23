@@ -25,7 +25,7 @@ static func _test_show_units_panel_connect_and_emit(tests: Node) -> bool:
 	tests._log("test_event_bus: show_units_panel can connect and emit")
 	var received: Array = []
 	var cb := func(units: Array) -> void: received.append(units)
-	var err := EventBus.show_units_panel.connect(cb)
+	var err: int = EventBus.show_units_panel.connect(cb)
 	if err != OK:
 		tests._fail("connect show_units_panel failed: %d" % err)
 		return false

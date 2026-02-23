@@ -1,5 +1,5 @@
 # Run hex-strategy-game tests on push and pull_request.
-# Requires Godot 4.x. Uses a Linux Godot editor binary (headless).
+# Uses same Godot version as project (4.6) for @warning_ignore and script compatibility.
 
 name: Tests
 
@@ -15,9 +15,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install Godot 4.x (headless)
+      - name: Install Godot 4.6 (headless)
         run: |
-          GODOT_VERSION="4.2.2"
+          GODOT_VERSION="4.6"
           GODOT_ZIP="Godot_v${GODOT_VERSION}-stable_linux.x86_64.zip"
           wget -q "https://github.com/godotengine/godot-builds/releases/download/${GODOT_VERSION}-stable/${GODOT_ZIP}"
           unzip -q -o "${GODOT_ZIP}"
