@@ -58,13 +58,22 @@ static func run_pipeline(actions_by_type: Dictionary, ctx: ExecutionContext) -> 
 			if ctx.phase_callback.is_valid():
 				ctx.phase_callback.call()
 
-## Returns the list of cells to check for damage. For "self" pattern uses attacker_cell so damage is correct after attacker moved (e.g. Zergling fast-move then fast-ability).
+## Returns the list of cells to check for damage. For "self" uses attacker_cell. For "ray" only path to target. For "target" only the target tile (e.g. Viper).
 static func get_damage_cells(attacker_cell: Vector2, ac: ActionInstance, config: Dictionary) -> Array:
-	var full_path: Array = ac.path + [ac.end_point]
 	var pattern_self: bool = config.get("pattern", "") == "self"
 	if pattern_self:
+		var full_path: Array = ac.path + [ac.end_point]
 		if full_path.is_empty() or not HexGrid.cell_equal(full_path[full_path.size() - 1], attacker_cell):
 			return [attacker_cell]
+		return full_path
+	var pattern_ray: bool = config.get("pattern", "") == "ray"
+	if pattern_ray:
+		var path_to_target: Array = HexGrid.build_path_to(int(attacker_cell.x), int(attacker_cell.y), int(ac.end_point.x), int(ac.end_point.y))
+		return path_to_target
+	var pattern_target: bool = config.get("pattern", "") == "target"
+	if pattern_target:
+		return [ac.end_point]
+	var full_path: Array = ac.path + [ac.end_point]
 	return full_path
 
 ## Returns Callable for the given action type, or invalid for no-op types.
@@ -90,11 +99,11 @@ static func _handle_abilities(action_type: String, entries: Array, ctx: Executio
 		else:
 			attack_entries.append(entry)
 	if not reload_entries.is_empty():
-		_handle_reload(action_type, reload_entries, ctx)
+		await _handle_reload.call(action_type, reload_entries, ctx)
 	if not support_entries.is_empty():
 		_handle_support(action_type, support_entries, ctx)
 	if not attack_entries.is_empty():
-		_handle_attacks(action_type, attack_entries, ctx)
+		await _handle_attacks.call(action_type, attack_entries, ctx)
 
 static func _handle_reload(_action_type: String, entries: Array, ctx: ExecutionContext) -> void:
 	for entry in entries:
@@ -133,10 +142,11 @@ static func _handle_support(_action_type: String, entries: Array, ctx: Execution
 		var heal_amount: int = int(config.get("heal_amount", 1))
 		var recharge: int = int(config.get("recharge", 1))
 		var supporter_group: Node = supporter.get_parent()
-		var target_cell: Vector2 = ac.end_point
+		# end_point is relative (0,0 = self); resolve to world cell
+		var target_cell: Vector2 = Vector2(int(supporter.cell.x) + int(ac.end_point.x), int(supporter.cell.y) + int(ac.end_point.y))
 		var units_at: Array = ctx.get_units_at_cell.call(target_cell)
 		for target in units_at:
-			if not is_instance_valid(target) or not target is Unit or target == supporter:
+			if not is_instance_valid(target) or not target is Unit:
 				continue
 			if target.get_parent() != supporter_group:
 				continue
@@ -171,31 +181,16 @@ static func _handle_moves(action_type: String, entries: Array, ctx: ExecutionCon
 			ctx.recording.actions.append({ "type": "move", "unit": u, "from_cell": from_cell, "path": ac.path + [ac.end_point] })
 
 static func _handle_attacks(action_type: String, entries: Array, ctx: ExecutionContext) -> void:
+	# Resolve "self" pattern so ac has current cell for damage
 	for entry in entries:
 		var attacker = entry.unit
 		if not _valid_unit(attacker):
-			print("[EXEC] _handle_attacks skip invalid unit")
 			continue
 		var ac: ActionInstance = entry.ac
 		if ac.definition and Actions.get_action_config(ac.definition.action_key).get("pattern", "") == "self":
 			entry.ac = ac.definition.to_action_instance(attacker)
-			ac = entry.ac
-		var action_key: String = ac.definition.action_key if ac.definition else ""
-		var is_passive: bool = action_key in attacker.def.passive_action_keys
-		var play_animation: bool = true
-		if is_passive and not _would_attack_deal_damage(attacker, ac, ctx):
-			play_animation = false
-		print("[EXEC] _handle_attacks calling attack for ", attacker.def.name)
-		attacker.attack(ac, play_animation)
-		if play_animation:
-			var done_flag: Array = [false]
-			attacker.attack_complete.connect(func(): done_flag[0] = true, CONNECT_ONE_SHOT)
-			var timeout := ctx.tree.create_timer(ATTACK_TIMEOUT)
-			timeout.timeout.connect(func(): done_flag[0] = true, CONNECT_ONE_SHOT)
-			while not done_flag[0]:
-				await ctx.tree.process_frame
-		print("[EXEC] _handle_attacks attack complete for ", attacker.def.name)
-	# Debug: list groups so we can verify all units are considered
+	# Run damage phase FIRST (before any await) so positions are from current phase only (e.g. after fast move, before move phase).
+	# Otherwise the attack animation's await can let the scene advance and the move phase run, changing target positions.
 	const DEBUG_DAMAGE_VERBOSE := true
 	if DEBUG_DAMAGE_VERBOSE:
 		for gi in ctx.groups.size():
@@ -205,7 +200,7 @@ static func _handle_attacks(action_type: String, entries: Array, ctx: ExecutionC
 				if c is Unit:
 					names.append("%s@%s" % [c.def.name if c.def else "?", c.cell])
 			print("[DAMAGE] group[%d] name=%s units=%s" % [gi, g.name, names])
-	print("[DAMAGE] damage phase: apply_damage=%s entries=%d groups=%d" % [ctx.apply_damage, entries.size(), ctx.groups.size()])
+	print("[DAMAGE] damage phase: apply_damage=%s entries=%d (before animations)" % [ctx.apply_damage, entries.size()])
 	for entry in entries:
 		if not ctx.apply_damage:
 			continue
@@ -236,14 +231,13 @@ static func _handle_attacks(action_type: String, entries: Array, ctx: ExecutionC
 						if DEBUG_DAMAGE_VERBOSE:
 							print("[DAMAGE]     candidate %s same_group=%s -> %s" % [child.def.name if child.def else "?", same_group, "skip (ally)" if same_group else "HIT"])
 						if same_group:
-							continue  # Same group = ally, don't damage
+							continue
 						dealt_damage = true
 						var uid: int = child.get_instance_id()
 						ctx.damage_by_id[uid] = ctx.damage_by_id.get(uid, 0) + damage_amount
 						print("[DAMAGE] hit %s at %s for %d (uid %d)" % [child.def.name, cell, damage_amount, uid])
 						if stun_duration > 0:
 							_apply_stun_effect(ctx, child, stun_duration)
-		# AoE damage: from = attacker cell, target = ac.end_point
 		var aoe: Dictionary = config.get("area_of_effect", {})
 		if not aoe.is_empty():
 			var from_cell: Vector2 = attacker.cell
@@ -254,7 +248,7 @@ static func _handle_attacks(action_type: String, entries: Array, ctx: ExecutionC
 					for child in group.get_children():
 						if child is Unit and HexGrid.cell_equal(child.cell, aoe_cell) and child != attacker:
 							if child.get_parent() == attacker_group:
-								continue  # Same group = ally, don't damage
+								continue
 							dealt_damage = true
 							var uid: int = child.get_instance_id()
 							ctx.damage_by_id[uid] = ctx.damage_by_id.get(uid, 0) + damage_amount
@@ -276,10 +270,30 @@ static func _handle_attacks(action_type: String, entries: Array, ctx: ExecutionC
 				causers[key] = true
 				ctx.recording["damage_causers"] = causers
 	print("[DAMAGE] damage phase done, damage_by_id size=%d" % ctx.damage_by_id.size())
-	# Apply damage immediately so it is not dependent on pipeline calling _apply_accumulated_damage after return
 	if ctx.apply_damage and ctx.damage_by_id.size() > 0:
 		print("[DAMAGE] applying from _handle_attacks (apply_damage=%s)" % ctx.apply_damage)
 		_apply_accumulated_damage(ctx)
+	# Then play attack animations (after damage so positions are correct)
+	for entry in entries:
+		var attacker = entry.unit
+		if not _valid_unit(attacker):
+			continue
+		var ac: ActionInstance = entry.ac
+		var action_key: String = ac.definition.action_key if ac.definition else ""
+		var is_passive: bool = action_key in attacker.def.passive_action_keys
+		var play_animation: bool = true
+		if is_passive and not _would_attack_deal_damage(attacker, ac, ctx):
+			play_animation = false
+		print("[EXEC] _handle_attacks calling attack for ", attacker.def.name)
+		attacker.attack(ac, play_animation)
+		if play_animation:
+			var done_flag: Array = [false]
+			attacker.attack_complete.connect(func(): done_flag[0] = true, CONNECT_ONE_SHOT)
+			var timeout := ctx.tree.create_timer(ATTACK_TIMEOUT)
+			timeout.timeout.connect(func(): done_flag[0] = true, CONNECT_ONE_SHOT)
+			while not done_flag[0]:
+				await ctx.tree.process_frame
+		print("[EXEC] _handle_attacks attack complete for ", attacker.def.name)
 
 static func _apply_stun_effect(ctx: ExecutionContext, target_unit: Unit, duration: int) -> void:
 	var effect := UnitEffect.new(UnitEffect.Kind.Stun, duration, {})
@@ -321,7 +335,7 @@ static func _apply_accumulated_damage(ctx: ExecutionContext) -> void:
 ## Returns true if the attack would damage any enemy (used to skip passive attack animation when no damage).
 static func _would_attack_deal_damage(attacker, ac: ActionInstance, ctx: ExecutionContext) -> bool:
 	var config: Dictionary = Actions.get_action_config(ac.definition.action_key) if ac.definition else {}
-	var full_path: Array = ac.path + [ac.end_point]
+	var full_path: Array = get_damage_cells(attacker.cell, ac, config)
 	var attacker_group: Node = attacker.get_parent()
 	for cell in full_path:
 		for group in ctx.groups:

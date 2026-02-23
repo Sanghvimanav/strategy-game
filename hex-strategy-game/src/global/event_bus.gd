@@ -17,4 +17,4 @@ signal action_key_selected(action_key)
 signal turn_changed(turn_number)
 signal replay_available_changed(available: bool)
 signal replay_finished
-@warning_ignore_restore
+@warning_ignore_restore("unused_signal")

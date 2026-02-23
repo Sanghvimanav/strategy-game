@@ -57,7 +57,7 @@ func _ready() -> void:
 		health = max_health
 	health_bar.init(health, max_health)
 	max_energy = def.max_energy
-	energy = max_energy
+	energy = def.start_energy if def.start_energy >= 0 else max_energy
 	if energy_bar:
 		energy_bar.visible = max_energy > 0
 		if max_energy > 0:
@@ -211,8 +211,8 @@ func _on_death_finished() -> void:
 	# Don't queue_free: enables replay/undo to restore state
 
 ## Restore unit for replay/undo. Sets position, health, energy, effects, and visibility.
-func restore_state(cell: Vector2, health_val: int, energy_val: int = -1, effects_data: Array = []) -> void:
-	global_position = Navigation.cell_to_world(cell, true)
+func restore_state(target_cell: Vector2, health_val: int, energy_val: int = -1, effects_data: Array = []) -> void:
+	global_position = Navigation.cell_to_world(target_cell, true)
 	health = health_val
 	if energy_val >= 0:
 		energy = energy_val
@@ -225,4 +225,3 @@ func restore_state(cell: Vector2, health_val: int, energy_val: int = -1, effects
 	visible = true
 	sprite.play("idle")
 	sprite.modulate = Color.WHITE
-

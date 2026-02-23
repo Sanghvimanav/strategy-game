@@ -433,10 +433,12 @@ func _replay_last_turn() -> void:
 		ctx.phase_callback = hex_map_node.refresh_fog
 	await TurnExecutor.run_pipeline(actions_by_type, ctx)
 	var damage_by_id: Dictionary = last_turn_recording.get("damage_by_id", {})
-	for uid in damage_by_id:
-		var unit = instance_from_id(uid as int)
+	for uid_key in damage_by_id:
+		var uid: int = int(uid_key)
+		var unit = instance_from_id(uid)
 		if is_instance_valid(unit):
-			unit.health -= damage_by_id[uid]
+			var dmg: int = int(damage_by_id[uid_key])
+			unit.health -= dmg
 			if unit.health_bar:
 				unit.health_bar.update_value(unit.health)
 	var applied_effects: Array = last_turn_recording.get("applied_effects", [])

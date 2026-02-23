@@ -38,6 +38,8 @@ enum Faction {
 @export var max_health: int = 0
 ## Max energy (0 = no energy bar). Ghost and similar units use energy for attacks.
 @export var max_energy: int = 0
+## Starting energy (-1 = use max_energy). Use 0 for base so it must recharge before healing.
+@export var start_energy: int = -1
 ## Fog of war: hexes visible within this many steps. -1 = full visibility (no fog), 0 = no sight, >0 = sight range.
 @export var sight_range: int = -1
 ## Explicit move definitions. Ignored if move_action_keys is not empty.

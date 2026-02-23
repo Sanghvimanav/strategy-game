@@ -77,6 +77,7 @@ const ACTION_CONFIGS: Dictionary = {
 		key = "attack_viper",
 		type = "ability",
 		name = "Parasitic Bite",
+		pattern = "target",
 		min_range = 2,
 		max_range = 2,
 		color = "#9C27B0",

@@ -124,7 +124,7 @@ static func polygon_points_hex(center_x: float, center_y: float, radius: float, 
 	return points
 
 static func cell_equal(a: Vector2, b: Vector2) -> bool:
-	return int(a.x) == int(b.x) and int(a.y) == int(b.y)
+	return int(round(a.x)) == int(round(b.x)) and int(round(a.y)) == int(round(b.y))
 
 ## Returns direction index 0-5 from from_cell to to_cell, or -1 if same cell.
 ## Mirrors server3 getDirectionIndex (cube direction dot product).
@@ -159,12 +159,12 @@ static func get_aoe_tiles(from_cell: Vector2, target_cell: Vector2, area_of_effe
 		return []
 	var result: Array[Vector2i] = []
 	var tq := int(target_cell.x)
-	var tr := int(target_cell.y)
+	var target_r := int(target_cell.y)
 	for rel_dir in dirs:
 		var idx := (dir_idx + int(rel_dir) + 6) % 6
 		var d := AXIAL_DIRECTIONS[idx]
 		var cq := tq
-		var cr := tr
+		var cr := target_r
 		for step in dist:
 			cq += d.x
 			cr += d.y
