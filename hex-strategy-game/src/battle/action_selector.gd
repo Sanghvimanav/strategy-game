@@ -3,6 +3,7 @@ extends PanelContainer
 ## filters the board options to that action only (strategy_game_v8 style).
 
 @onready var unit_label: Label = $margin/vbox/unit_label
+@onready var effects_label: Label = $margin/vbox/effects_label
 @onready var move_buttons: HFlowContainer = $margin/vbox/move_group/buttons
 @onready var ability_buttons: HFlowContainer = $margin/vbox/ability_group/buttons
 @onready var passive_list: VBoxContainer = $margin/vbox/passive_group/passive_list
@@ -26,7 +27,11 @@ func _update_display() -> void:
 		hide()
 		return
 	show()
-	unit_label.text = "%s (%d/%d HP)" % [_current_unit.def.name, _current_unit.health, _current_unit.max_health]
+	var hp_text := "%s (%d/%d HP)" % [_current_unit.def.name, _current_unit.health, _current_unit.max_health]
+	if _current_unit.max_energy > 0:
+		hp_text += "  %d/%d E" % [_current_unit.energy, _current_unit.max_energy]
+	unit_label.text = hp_text
+	effects_label.text = "Effects: %s" % _current_unit.get_effects_display_text()
 	show_all_btn.visible = not _selected_action_key.is_empty()
 	_rebuild_buttons()
 
@@ -43,7 +48,7 @@ func _rebuild_buttons() -> void:
 	for key in def.ability_action_keys:
 		# Hide energy-consuming abilities when unit has no energy (e.g. ghost/marine out of ammo)
 		var config: Dictionary = Actions.get_action_config(key)
-		var power: int = int(config.get("power_consumption", 0))
+		var power: int = int(config.get("energy_consumption", 0))
 		if power > 0 and _current_unit.max_energy > 0 and _current_unit.energy <= 0:
 			continue
 		_add_action_button(ability_buttons, key, false)

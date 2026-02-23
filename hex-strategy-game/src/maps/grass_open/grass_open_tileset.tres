@@ -1,4 +1,4 @@
-[gd_resource type="TileSet" load_steps=3 format=3 uid="uid://bhs3agn1mn0oo"]
+[gd_resource type="TileSet" format=3 uid="uid://bhs3agn1mn0oo"]
 
 [ext_resource type="Texture2D" uid="uid://ciwfhilsmpu5o" path="res://src/maps/grass_open/grass_open_tiles.png" id="1_gcmaj"]
 

@@ -1,0 +1,13 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://src/unit/art/effects/heal_effect.gd" id="1_script"]
+[ext_resource type="SpriteFrames" path="res://src/unit/art/effects/heal_effect_spriteframes.tres" id="2_frames"]
+
+[node name="heal_effect" type="Node2D"]
+script = ExtResource("1_script")
+
+[node name="sprite" type="AnimatedSprite2D" parent="."]
+position = Vector2(0, -20)
+scale = Vector2(0.22, 0.22)
+sprite_frames = ExtResource("2_frames")
+animation = &"default"

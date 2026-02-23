@@ -1,0 +1,54 @@
+[gd_resource type="SpriteFrames" format=3 uid="uid://bs47kgbdg38mf"]
+
+[ext_resource type="Texture2D" uid="uid://bh3appfxskqr6" path="res://src/unit/art/terran_base/militarybase.png" id="1_sysim"]
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_rd7rv"]
+atlas = ExtResource("1_sysim")
+region = Rect2(0, 0, 1536, 1024)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_vni0b"]
+atlas = ExtResource("1_sysim")
+region = Rect2(0, 0, 1536, 1024)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_74kkq"]
+atlas = ExtResource("1_sysim")
+region = Rect2(0, 0, 1536, 1024)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_gytlu"]
+atlas = ExtResource("1_sysim")
+region = Rect2(0, 0, 1536, 1024)
+
+[resource]
+animations = [{
+"frames": [{
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_rd7rv")
+}],
+"loop": false,
+"name": &"attack",
+"speed": 1.0
+}, {
+"frames": [{
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_vni0b")
+}],
+"loop": false,
+"name": &"death",
+"speed": 1.0
+}, {
+"frames": [{
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_74kkq")
+}],
+"loop": false,
+"name": &"hit",
+"speed": 1.0
+}, {
+"frames": [{
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_gytlu")
+}],
+"loop": true,
+"name": &"idle",
+"speed": 1.0
+}]

@@ -146,8 +146,11 @@ func _unhandled_input(event: InputEvent) -> void:
 			if units_at_cell.size() > 1:
 				EventBus.show_units_panel.emit(units_at_cell)
 			elif units_at_cell.size() == 1:
+				EventBus.show_units_panel.emit([])  # Hide unit selector when picking single unit
 				_select_unit_for_planning(units_at_cell[0])
 				return
+			else:
+				EventBus.show_units_panel.emit([])  # Hide unit selector when clicking off (empty tile)
 
 	if event is InputEventKey and event.pressed:
 		if event.keycode == KEY_ENTER or event.keycode == KEY_KP_ENTER:
@@ -218,8 +221,13 @@ func _advance_planning() -> void:
 			planning_unit_index = idx
 			_select_planning_unit()
 			return
-	# All units have planned actions
-	EventBus.planning_complete.emit()
+		# All units have planned actions - clear highlights before completing
+		current_unit = null
+		current_acs = []
+		selected_action_key = ""
+		EventBus.unit_selected_for_planning.emit(null)
+		_update_highlights()
+		EventBus.planning_complete.emit()
 
 func _select_planning_unit() -> void:
 	var active = get_active_units()
@@ -288,6 +296,13 @@ func _update_highlights() -> void:
 
 func _finish_turn_after_execution() -> void:
 	print("[EXEC] _finish_turn_after_execution START turn=", turn_number)
+	for u in get_all_units():
+		if is_instance_valid(u) and u is Unit and u.is_active:
+			u.tick_effects()
+	# Refresh fog of war after units have moved
+	var hex_map_node = get_parent().get_node_or_null("hex_map")
+	if hex_map_node and hex_map_node.has_method("refresh_fog"):
+		hex_map_node.refresh_fog()
 	_clear_all_planned_actions()
 	turn_number += 1
 	print("[EXEC] _finish_turn_after_execution DONE, starting turn ", turn_number)
@@ -308,12 +323,17 @@ func _execute_planned_actions() -> void:
 	call_deferred("_finish_turn_after_execution")
 
 func _record_turn_before_execution() -> void:
-	last_turn_recording = { "actions": [], "died_ids": [], "summary": [], "before_state": {}, "damage_causers": {} }
+	last_turn_recording = { "actions": [], "died_ids": [], "summary": [], "before_state": {}, "damage_causers": {}, "applied_effects": [] }
 	var active = get_active_units()
 	for u in active:
 		var s: Dictionary = { "cell": u.cell, "health": u.health }
 		if u.max_energy > 0:
 			s["energy"] = u.energy
+		var effects_data: Array = []
+		for e in u.active_effects:
+			if e is UnitEffect:
+				effects_data.append(e.to_dict())
+		s["effects"] = effects_data
 		last_turn_recording.before_state[u.get_instance_id()] = s
 	for u in active:
 		if not u.is_active:
@@ -321,12 +341,12 @@ func _record_turn_before_execution() -> void:
 		if u.planned_action != null:
 			var ac: ActionInstance = u.planned_action
 			var action_name: String = ac.definition.display_name if ac.definition.display_name else "Action"
-			last_turn_recording.summary.append({ "unit_name": u.def.name, "action_name": action_name, "instance_id": u.get_instance_id() })
+			var atype: String = Actions.get_action_type(ac.definition.action_key) if ac.definition else ""
+			last_turn_recording.summary.append({ "unit_name": u.def.name, "action_name": action_name, "instance_id": u.get_instance_id(), "action_type": atype })
 		for def in u.def.get_passive_ability_definitions_resolved():
-			if Actions.get_action_type(def.action_key) == "stun":
-				continue
 			var action_name: String = def.display_name if def.display_name else "Passive"
-			last_turn_recording.summary.append({ "unit_name": u.def.name, "action_name": action_name, "instance_id": u.get_instance_id(), "action_key": def.action_key, "is_passive": true })
+			var atype: String = Actions.get_action_type(def.action_key)
+			last_turn_recording.summary.append({ "unit_name": u.def.name, "action_name": action_name, "instance_id": u.get_instance_id(), "action_key": def.action_key, "is_passive": true, "action_type": atype })
 
 func _filter_passive_summary_entries() -> void:
 	var causers: Dictionary = last_turn_recording.get("damage_causers", {})
@@ -347,11 +367,52 @@ func _on_replay_turn_requested() -> void:
 		return
 	var summary_lines: Array = []
 	var died_ids: Array = last_turn_recording.get("died_ids", [])
-	for entry in last_turn_recording.get("summary", []):
-		var suffix := " (eliminated)" if entry.instance_id in died_ids else ""
-		summary_lines.append("%s: %s%s" % [entry.unit_name, entry.action_name, suffix])
+	var summary: Array = last_turn_recording.get("summary", [])
+	var before_state: Dictionary = last_turn_recording.get("before_state", {})
+	var damage_by_id: Dictionary = last_turn_recording.get("damage_by_id", {})
+
+	for action_type in Actions.ACTION_ORDER:
+		var entries_in_phase: Array = []
+		for entry in summary:
+			if entry.get("action_type", "") == action_type:
+				entries_in_phase.append(entry)
+		if entries_in_phase.is_empty():
+			continue
+		summary_lines.append("")
+		summary_lines.append(_phase_display_name(action_type))
+		for entry in entries_in_phase:
+			var suffix := " (eliminated)" if entry.instance_id in died_ids else ""
+			summary_lines.append("  %s: %s%s" % [entry.unit_name, entry.action_name, suffix])
+
+	summary_lines.append("")
+	summary_lines.append("Units damaged")
+	if damage_by_id.is_empty():
+		summary_lines.append("  None")
+	else:
+		for uid in damage_by_id:
+			var start_hp: int = before_state.get(uid, {}).get("health", 0)
+			var damage: int = damage_by_id[uid]
+			var end_hp: int = mini(maxi(start_hp - damage, 0), 999)
+			var unit_name: String = "Unit"
+			var unit = instance_from_id(uid as int)
+			if is_instance_valid(unit) and unit is Unit:
+				unit_name = unit.def.name
+			var elim := " (eliminated)" if end_hp <= 0 else ""
+			summary_lines.append("  %s: %d HP → %d (-%d)%s" % [unit_name, start_hp, end_hp, damage, elim])
+
+	if summary_lines.size() > 0 and summary_lines[0] == "":
+		summary_lines.remove_at(0)
 	EventBus.show_replay_summary.emit(summary_lines)
 	_replay_last_turn()
+
+func _phase_display_name(action_type: String) -> String:
+	if action_type.is_empty():
+		return "Other"
+	var parts: PackedStringArray = action_type.split(" ")
+	for i in parts.size():
+		if parts[i].length() > 0:
+			parts[i] = parts[i].left(1).to_upper() + parts[i].substr(1)
+	return " ".join(parts)
 
 func _replay_last_turn() -> void:
 	battle_phase = BattlePhase.Phase.EXECUTING
@@ -359,16 +420,36 @@ func _replay_last_turn() -> void:
 	EventBus.show_selected_unit_cell.emit(null)
 	EventBus.show_move_path.emit(null, Vector2.ZERO)
 	_restore_before_state(last_turn_recording.get("before_state", {}))
-	var actions: Array = last_turn_recording.get("actions", [])
-	await TurnExecutor.run_replay(actions, get_tree())
+	var hex_map_node = get_parent().get_node_or_null("hex_map")
+	var actions_by_type := _build_replay_actions_by_type(last_turn_recording.get("actions", []))
+	var ctx := TurnExecutor.ExecutionContext.new(
+		groups,
+		false,
+		{},
+		_get_units_at_cell_for_planning,
+		get_tree()
+	)
+	if hex_map_node and hex_map_node.has_method("refresh_fog"):
+		ctx.phase_callback = hex_map_node.refresh_fog
+	await TurnExecutor.run_pipeline(actions_by_type, ctx)
 	var damage_by_id: Dictionary = last_turn_recording.get("damage_by_id", {})
-	var units_that_will_die: Array = []
 	for uid in damage_by_id:
 		var unit = instance_from_id(uid as int)
 		if is_instance_valid(unit):
 			unit.health -= damage_by_id[uid]
-			if unit.health <= 0:
-				units_that_will_die.append(unit)
+			if unit.health_bar:
+				unit.health_bar.update_value(unit.health)
+	var applied_effects: Array = last_turn_recording.get("applied_effects", [])
+	for entry in applied_effects:
+		var unit = instance_from_id(entry.get("unit_id", 0) as int)
+		if is_instance_valid(unit) and unit is Unit:
+			var eff := UnitEffect.from_dict(entry.get("effect", {}))
+			unit.add_effect(eff)
+	var units_that_will_die: Array = []
+	for uid in damage_by_id:
+		var unit = instance_from_id(uid as int)
+		if is_instance_valid(unit) and unit.health <= 0:
+			units_that_will_die.append(unit)
 	var to_await := units_that_will_die.filter(func(u): return is_instance_valid(u))
 	if not to_await.is_empty():
 		var completed_arr := [0]
@@ -385,7 +466,52 @@ func _replay_last_turn() -> void:
 				break
 	await get_tree().process_frame
 	battle_phase = BattlePhase.Phase.PLANNING
+	if hex_map_node and hex_map_node.has_method("refresh_fog"):
+		hex_map_node.refresh_fog()
 	EventBus.replay_finished.emit()
+
+## Builds actions_by_type from recorded actions so replay uses the same run_pipeline as live execution.
+func _build_replay_actions_by_type(recording_actions: Array) -> Dictionary:
+	var actions_by_type: Dictionary = {}
+	for t in Actions.ACTION_ORDER:
+		actions_by_type[t] = []
+	for action in recording_actions:
+		var atype: String = action.get("type", "")
+		if atype.is_empty():
+			continue
+		# Map legacy recording types to phase names
+		if atype == "attack" or atype == "support":
+			atype = "ability"
+		elif atype == "fast attack":
+			atype = "fast ability"
+		elif atype == "slow attack":
+			atype = "slow ability"
+		elif atype == "reload":
+			atype = "slow ability"
+		var u = action.get("unit")
+		if not is_instance_valid(u) or not u is Unit:
+			continue
+		var entry: Dictionary = { "unit": u, "is_move": (atype == "move") }
+		if atype == "move":
+			var path: Array = action.get("path", [])
+			if path.is_empty():
+				continue
+			var ac := ActionInstance.new(null, u)
+			ac.path = path.slice(0, path.size() - 1)
+			ac.end_point = path[path.size() - 1]
+			entry["ac"] = ac
+		else:
+			entry["ac"] = action.get("ac")
+			if entry["ac"] == null and action.get("type", "") == "reload":
+				var defs: Array = Actions.get_ability_definitions_for_action("reload")
+				if not defs.is_empty():
+					entry["ac"] = defs[0].to_action_instance(u)
+			if entry["ac"] == null:
+				continue
+		if not actions_by_type.has(atype):
+			actions_by_type[atype] = []
+		actions_by_type[atype].append(entry)
+	return actions_by_type
 
 func _restore_before_state(before_state: Dictionary) -> void:
 	for uid in before_state:
@@ -393,7 +519,8 @@ func _restore_before_state(before_state: Dictionary) -> void:
 		if is_instance_valid(unit) and unit is Unit:
 			var s: Dictionary = before_state[uid]
 			var energy_val: int = s.get("energy", -1)
-			unit.restore_state(s.cell, s.health, energy_val)
+			var effects_data: Array = s.get("effects", [])
+			unit.restore_state(s.cell, s.health, energy_val, effects_data)
 
 ## Restore to start of last turn (for future undo). Same as replay restore but without re-executing.
 func undo_last_turn() -> void:
@@ -416,19 +543,13 @@ func _run_planned_actions_phase3() -> void:
 	await TurnExecutor.run_pipeline(actions_by_type, ctx)
 	print("[EXEC] pipeline DONE")
 
-	var damage_by_id: Dictionary = ctx.damage_by_id
-	last_turn_recording["damage_by_id"] = damage_by_id.duplicate()
+	# Damage was already applied after each attack phase in the pipeline; died_ids populated there
+	last_turn_recording["damage_by_id"] = ctx.damage_by_id.duplicate()
 	_filter_passive_summary_entries()
 	var units_that_will_die: Array = []
-	for uid in damage_by_id:
-		var unit = instance_from_id(uid as int)
-		if is_instance_valid(unit) and unit.health - damage_by_id[uid] <= 0:
-			units_that_will_die.append(unit)
-			last_turn_recording.died_ids.append(uid)
-	for uid in damage_by_id:
-		var unit = instance_from_id(uid as int)
-		if is_instance_valid(unit):
-			unit.health -= damage_by_id[uid]
+	for u in get_all_units():
+		if u.health <= 0:
+			units_that_will_die.append(u)
 
 	var to_await := units_that_will_die.filter(func(u): return is_instance_valid(u))
 	if not to_await.is_empty():
@@ -497,14 +618,11 @@ func execute_turn_spec(spec: Dictionary) -> Dictionary:
 		get_tree()
 	)
 	await TurnExecutor.run_pipeline(actions_by_type, ctx)
+	# Damage already applied after each attack phase in pipeline; died_ids populated there
 	var units_that_will_die: Array = []
-	for uid in ctx.damage_by_id:
-		var unit = instance_from_id(uid as int)
-		if is_instance_valid(unit):
-			unit.health -= ctx.damage_by_id[uid]
-			if unit.health <= 0:
-				units_that_will_die.append(unit)
-				recording.died_ids.append(uid)
+	for u in units:
+		if u.health <= 0:
+			units_that_will_die.append(u)
 	var to_await := units_that_will_die.filter(func(u): return is_instance_valid(u))
 	if not to_await.is_empty():
 		var completed_arr := [0]

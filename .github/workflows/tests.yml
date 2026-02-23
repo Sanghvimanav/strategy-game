@@ -1,0 +1,35 @@
+# Run hex-strategy-game tests on push and pull_request.
+# Requires Godot 4.x. Uses a Linux Godot editor binary (headless).
+
+name: Tests
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Godot 4.x (headless)
+        run: |
+          GODOT_VERSION="4.2.2"
+          GODOT_ZIP="Godot_v${GODOT_VERSION}-stable_linux.x86_64.zip"
+          wget -q "https://github.com/godotengine/godot-builds/releases/download/${GODOT_VERSION}-stable/${GODOT_ZIP}"
+          unzip -q -o "${GODOT_ZIP}"
+          GODOT_EXE="Godot_v${GODOT_VERSION}-stable_linux.x86_64"
+          chmod +x "${GODOT_EXE}"
+          echo "${GODOT_EXE}" >> $GITHUB_ENV
+          echo "GODOT=$(pwd)/${GODOT_EXE}" >> $GITHUB_ENV
+
+      - name: Run tests
+        run: |
+          cd hex-strategy-game
+          $GODOT --headless --path . res://tests/test_runner.tscn
+        env:
+          # Avoid leak-check noise in logs
+          GODOT_DISABLE_LEAK_CHECKS: 1

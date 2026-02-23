@@ -1,5 +1,7 @@
 extends RefCounted
 ## Picks actions for AI-controlled units. Works with any unit type.
+## Zerglings: only attack when 3+ zerglings or 1 zergling + 1 baneling within 2 tiles of player.
+## When holding, zerglings spread out in the 2-tile ring around the player.
 
 ## Returns {ac: ActionInstance, is_move: bool} or null if no valid action.
 static func pick_action(unit: Unit, groups: Array, get_units_at_cell: Callable) -> Dictionary:
@@ -10,19 +12,31 @@ static func pick_action(unit: Unit, groups: Array, get_units_at_cell: Callable) 
 	# Prefer attack that hits an enemy
 	for entry in options:
 		if not entry.is_move:
-			if _action_hits_enemy(entry.ac, enemies):
+			var action_key: String = entry.ac.definition.action_key if entry.ac.definition else ""
+			# Banelings only explode when on the same tile as an enemy
+			if action_key == "explode":
+				if _enemy_on_same_tile(entry.ac.unit, enemies):
+					return entry
+			elif _action_hits_enemy(entry.ac, enemies):
 				return entry
-	# Prefer move toward nearest enemy
-	var best_move: Dictionary = {}
+	# Move selection: zergling-specific logic when 2 tiles away
+	if _is_zergling(unit):
+		var entry = _pick_zergling_move(unit, options, enemies, groups)
+		if not entry.is_empty():
+			return entry
+	# Default: prefer move toward nearest enemy; when equidistant, pick randomly
+	var best_moves: Array = []
 	var best_dist := INF
 	for entry in options:
 		if entry.is_move:
 			var d := _dist_to_nearest_enemy(entry.ac.end_point, enemies)
 			if d < best_dist:
 				best_dist = d
-				best_move = entry
-	if not best_move.is_empty():
-		return best_move
+				best_moves = [entry]
+			elif d == best_dist:
+				best_moves.append(entry)
+	if not best_moves.is_empty():
+		return best_moves[randi_range(0, best_moves.size() - 1)]
 	# Fallback: first option (e.g. Rest)
 	return options[0]
 
@@ -47,6 +61,12 @@ static func _get_enemy_units(unit: Unit, groups: Array) -> Array:
 			if child is Unit and child.is_active:
 				enemies.append(child)
 	return enemies
+
+static func _enemy_on_same_tile(unit: Unit, enemies: Array) -> bool:
+	for e in enemies:
+		if HexGrid.cell_equal(e.cell, unit.cell):
+			return true
+	return false
 
 static func _action_hits_enemy(ac: ActionInstance, enemies: Array) -> bool:
 	var full_path: Array = ac.path + [ac.end_point]
@@ -75,3 +95,112 @@ static func _dist_to_nearest_enemy(cell: Vector2, enemies: Array) -> float:
 		if d < min_d:
 			min_d = d
 	return float(min_d)
+
+static func _is_zergling(unit: Unit) -> bool:
+	return unit.def != null and unit.def.name == "Zergling"
+
+static func _is_baneling(unit: Unit) -> bool:
+	return unit.def != null and unit.def.name == "Baneling"
+
+static func _get_allies(unit: Unit, groups: Array) -> Array:
+	var my_group: Node = unit.get_parent()
+	for group in groups:
+		if group == my_group:
+			var allies: Array = []
+			for child in group.get_children():
+				if child is Unit and child.is_active and child != unit:
+					allies.append(child)
+			return allies
+	return []
+
+## Cells at distance 1 or 2 from any enemy.
+static func _cells_within_2_of_enemies(enemies: Array) -> Dictionary:
+	var zone: Dictionary = {}
+	if enemies.is_empty():
+		return zone
+	for e in enemies:
+		var ec: Vector2 = e.cell
+		for dist in [1, 2]:
+			var ring := HexGrid.get_hexes_at_distance(int(ec.x), int(ec.y), dist)
+			for v in ring:
+				var key := "%d,%d" % [v.x, v.y]
+				zone[key] = Vector2(v.x, v.y)
+	return zone
+
+static func _cell_in_zone(cell: Vector2, zone: Dictionary) -> bool:
+	var key := "%d,%d" % [int(cell.x), int(cell.y)]
+	return zone.has(key)
+
+## Count zerglings and banelings in the 2-tile zone around enemies (excluding unit).
+static func _count_allies_in_zone(unit: Unit, allies: Array, zone: Dictionary) -> Dictionary:
+	var n_zerg := 0
+	var n_baneling := 0
+	for a in allies:
+		if not _cell_in_zone(a.cell, zone):
+			continue
+		if _is_zergling(a):
+			n_zerg += 1
+		elif _is_baneling(a):
+			n_baneling += 1
+	return {"zerg": n_zerg, "baneling": n_baneling}
+
+## Count allies at a specific cell (for spread-out scoring).
+static func _count_allies_at_cell(cell: Vector2, allies: Array, unit: Unit) -> int:
+	var count := 0
+	for a in allies:
+		if a == unit:
+			continue
+		if HexGrid.cell_equal(a.cell, cell):
+			count += 1
+	return count
+
+static func _pick_zergling_move(unit: Unit, options: Array, enemies: Array, groups: Array) -> Dictionary:
+	var move_options: Array = []
+	for entry in options:
+		if entry.is_move:
+			move_options.append(entry)
+	if move_options.is_empty():
+		return {}
+	var allies: Array = _get_allies(unit, groups)
+	var zone: Dictionary = _cells_within_2_of_enemies(enemies)
+	var counts: Dictionary = _count_allies_in_zone(unit, allies, zone)
+	var n_zerg: int = counts.get("zerg", 0)
+	var n_baneling: int = counts.get("baneling", 0)
+	# Condition to allow attack (move to dist 1): 3+ zerg in zone, or 1 zerg + 1 baneling
+	# This zergling moving in adds 1 zerg, so we need: n_zerg >= 2 OR n_baneling >= 1
+	var may_attack := n_zerg >= 2 or n_baneling >= 1
+	var cur_dist := _dist_to_nearest_enemy(unit.cell, enemies)
+	if cur_dist <= 1:
+		# Already adjacent; use default behavior (closest move - might be Rest)
+		return {}
+	# cur_dist >= 2
+	var moves_to_attack: Array = []  # Moves that put us at dist 1
+	var moves_to_spread: Array = []  # Moves that keep us at dist 2 (spread in ring)
+	for entry in move_options:
+		var d := _dist_to_nearest_enemy(entry.ac.end_point, enemies)
+		if d == 1:
+			moves_to_attack.append(entry)
+		elif d == 2:
+			moves_to_spread.append(entry)
+	if may_attack and not moves_to_attack.is_empty():
+		return moves_to_attack[randi_range(0, moves_to_attack.size() - 1)]
+	# Hold back: prefer spread moves (at dist 2) with fewer allies at that cell
+	if not moves_to_spread.is_empty():
+		var best: Array = []
+		var best_allies := INF
+		for entry in moves_to_spread:
+			var ep: Vector2 = entry.ac.end_point
+			var n_at := _count_allies_at_cell(ep, allies, unit)
+			if n_at < best_allies:
+				best_allies = n_at
+				best = [entry]
+			elif n_at == best_allies:
+				best.append(entry)
+		if not best.is_empty():
+			return best[randi_range(0, best.size() - 1)]
+	# No spread moves (e.g. already at dist 2, all moves go to 1 or 3): pick Rest if available
+	for entry in options:
+		if not entry.is_move and entry.ac.definition and entry.ac.definition.action_key == "reload":
+			return entry
+	# Fall through to default
+	return {}

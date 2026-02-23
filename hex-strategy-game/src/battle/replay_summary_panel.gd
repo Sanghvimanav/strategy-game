@@ -14,8 +14,12 @@ func _on_show_replay_summary(lines: Array) -> void:
 	for c in lines_container.get_children():
 		c.queue_free()
 	for line in lines:
+		var s := str(line)
 		var lbl := Label.new()
-		lbl.text = str(line)
+		lbl.text = s
+		if s.length() > 0 and not s.begins_with("  "):
+			lbl.add_theme_font_size_override("font_size", 14)
+			lbl.add_theme_color_override("font_color", Color(0.95, 0.95, 0.95))
 		lines_container.add_child(lbl)
 	show()
 

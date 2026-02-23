@@ -71,21 +71,60 @@ func _build_scenarios() -> void:
 			]},
 		]
 	})
-	# 2 Marines vs 5 Zerglings + 1 Baneling (randomized positions)
+	# Baneling debug: Baneling vs Marines (test explode)
 	available_scenarios.append({
-		"id": "marines_vs_zerglings",
-		"display_name": "2 Marines vs 5 Zerglings + Baneling",
+		"id": "baneling_debug",
+		"display_name": "Baneling Debug (Baneling vs 2 Marines)",
+		"groups": [
+			{"name": "player", "units": [
+				{"def_path": "res://src/unit/definitions/baneling.tres", "cell": Vector2i(0, 0)},
+			]},
+			{"name": "opponent", "ai": true, "units": [
+				{"def_path": "res://src/unit/definitions/marine.tres", "cell": Vector2i(-1, 1)},
+				{"def_path": "res://src/unit/definitions/marine.tres", "cell": Vector2i(-2, 0)},
+			]},
+		]
+	})
+	# Terran with Base: Base + Marine + Ghost vs Zerglings (base heals/resupplies adjacent)
+	available_scenarios.append({
+		"id": "terran_with_base",
+		"display_name": "Terran with Base (Base + Marine + Ghost vs Zerglings)",
+		"groups": [
+			{"name": "player", "units": [
+				{"def_path": "res://src/unit/definitions/terran_base.tres", "cell": Vector2i(0, 0)},
+				{"def_path": "res://src/unit/definitions/marine.tres", "cell": Vector2i(1, 0)},
+				{"def_path": "res://src/unit/definitions/ghost.tres", "cell": Vector2i(0, 1)},
+			]},
+			{"name": "opponent", "ai": true, "units": [
+				{"def_path": "res://src/unit/definitions/zergling.tres", "cell": Vector2i(-1, 1)},
+				{"def_path": "res://src/unit/definitions/zergling.tres", "cell": Vector2i(-2, 0)},
+			]},
+		]
+	})
+	# Zerg vs Terran: Base + 2 Marines + Ghost vs 5 Zerglings + Baneling (randomized positions)
+	available_scenarios.append({
+		"id": "zerg_vs_terran",
+		"display_name": "Zerg vs Terran",
 		"randomize_positions": true,
 		"groups": [
 			{
 				"name": "player",
 				"units": [
+					{"def_path": "res://src/unit/definitions/terran_base.tres"},
 					{"def_path": "res://src/unit/definitions/marine.tres"},
 					{"def_path": "res://src/unit/definitions/marine.tres"},
+					{"def_path": "res://src/unit/definitions/ghost.tres"},
 				],
 				"cell_pool": [
-					Vector2i(2, 0), Vector2i(2, -1), Vector2i(1, 1), Vector2i(1, 0), Vector2i(1, -1),
-					Vector2i(0, 2), Vector2i(0, 1), Vector2i(0, 0), Vector2i(0, -1), Vector2i(0, -2),
+					Vector2i(0, 0), Vector2i(0, 1), Vector2i(0, 2), Vector2i(0, 3), Vector2i(0, 4), Vector2i(0, 5),
+					Vector2i(1, -5), Vector2i(1, -4), Vector2i(1, -3), Vector2i(1, -2), Vector2i(1, -1), Vector2i(1, 0),
+					Vector2i(1, 1), Vector2i(1, 2), Vector2i(1, 3), Vector2i(1, 4),
+					Vector2i(2, -5), Vector2i(2, -4), Vector2i(2, -3), Vector2i(2, -2), Vector2i(2, -1), Vector2i(2, 0),
+					Vector2i(2, 1), Vector2i(2, 2), Vector2i(2, 3),
+					Vector2i(3, -5), Vector2i(3, -4), Vector2i(3, -3), Vector2i(3, -2), Vector2i(3, -1), Vector2i(3, 0),
+					Vector2i(3, 1), Vector2i(3, 2),
+					Vector2i(4, -5), Vector2i(4, -4), Vector2i(4, -3), Vector2i(4, -2), Vector2i(4, -1), Vector2i(4, 0), Vector2i(4, 1),
+					Vector2i(5, -5), Vector2i(5, -4), Vector2i(5, -3), Vector2i(5, -2), Vector2i(5, -1), Vector2i(5, 0),
 				],
 			},
 			{
@@ -98,11 +137,15 @@ func _build_scenarios() -> void:
 					{"def_path": "res://src/unit/definitions/zergling.tres"},
 					{"def_path": "res://src/unit/definitions/zergling.tres"},
 					{"def_path": "res://src/unit/definitions/baneling.tres"},
+					{"def_path": "res://src/unit/definitions/viper.tres"},
 				],
 				"cell_pool": [
-					Vector2i(-2, 0), Vector2i(-2, 1), Vector2i(-1, 2), Vector2i(-1, 1), Vector2i(-1, 0),
-					Vector2i(-1, -1), Vector2i(0, 2), Vector2i(0, 1), Vector2i(0, -1), Vector2i(0, -2),
-					Vector2i(-2, 2), Vector2i(-2, -1),
+					Vector2i(-5, 0), Vector2i(-5, 1), Vector2i(-5, 2), Vector2i(-5, 3), Vector2i(-5, 4), Vector2i(-5, 5),
+					Vector2i(-4, -1), Vector2i(-4, 0), Vector2i(-4, 1), Vector2i(-4, 2), Vector2i(-4, 3), Vector2i(-4, 4), Vector2i(-4, 5),
+					Vector2i(-3, -2), Vector2i(-3, -1), Vector2i(-3, 0), Vector2i(-3, 1), Vector2i(-3, 2), Vector2i(-3, 3), Vector2i(-3, 4), Vector2i(-3, 5),
+					Vector2i(-2, -3), Vector2i(-2, -2), Vector2i(-2, -1), Vector2i(-2, 0), Vector2i(-2, 1), Vector2i(-2, 2), Vector2i(-2, 3), Vector2i(-2, 4), Vector2i(-2, 5),
+					Vector2i(-1, -4), Vector2i(-1, -3), Vector2i(-1, -2), Vector2i(-1, -1), Vector2i(-1, 0), Vector2i(-1, 1), Vector2i(-1, 2), Vector2i(-1, 3), Vector2i(-1, 4), Vector2i(-1, 5),
+					Vector2i(0, -5), Vector2i(0, -4), Vector2i(0, -3), Vector2i(0, -2), Vector2i(0, -1),
 				],
 			},
 		],

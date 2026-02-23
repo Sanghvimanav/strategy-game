@@ -7,9 +7,11 @@
 script = ExtResource("1_script")
 name = "Ghost"
 type = 1
+faction = 2
 frames = ExtResource("1_frames")
-sprite_scale = Vector2(0.12, 0.12)
-sprite_offset = Vector2(0, 5)
+sprite_scale = Vector2(0.25, 0.25)
+sprite_offset = Vector2(0, 4)
 max_energy = 3
-move_action_keys = Array[String](["move_short"])
+sight_range = 1
+move_action_keys = Array[String](["move_short", "reload"])
 ability_action_keys = Array[String](["attack_ray"])

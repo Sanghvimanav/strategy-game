@@ -1,5 +1,6 @@
 extends Node
-
+## Event bus: signals are emitted from other scripts (units, UI). Suppress unused_signal in this file.
+@warning_ignore_start("unused_signal")
 signal show_move_acs(acs)
 signal show_attack_acs(acs, from_cell)
 signal show_move_path(ac, from_cell)
@@ -16,3 +17,4 @@ signal action_key_selected(action_key)
 signal turn_changed(turn_number)
 signal replay_available_changed(available: bool)
 signal replay_finished
+@warning_ignore_restore

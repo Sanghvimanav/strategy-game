@@ -1,5 +1,6 @@
 class_name Unit
 extends Node2D
+## Uses global Actions autoload for ACTION_ORDER etc. (do not preload actions.gd here).
 
 signal movement_complete
 signal attack_beginning(ac)
@@ -27,6 +28,9 @@ var health: int = 2: set = _set_health
 var flash_tween: Tween
 var max_energy: int = 0
 var energy: int = 0
+
+## Active status effects (Stun, HealOverTime, MovementBuff, etc.). Ticked at end of turn.
+var active_effects: Array = []
 
 var is_active: bool:
 	get:
@@ -82,21 +86,23 @@ func _init_def() -> void:
 		add_child(comp)
 		comp.unit = self
 
-func attack(ac: ActionInstance) -> void:
+func attack(ac: ActionInstance, play_animation: bool = true) -> void:
 	var is_passive := ac.definition and ac.definition.action_key in def.passive_action_keys
 	if not is_passive and max_energy > 0 and energy > 0:
 		energy -= 1
 		if energy_bar:
 			energy_bar.update_value(energy)
 	attack_beginning.emit(ac)
-	sprite.play('attack')
-	if ac.end_point.x < cell.x:
-		sprite.flip_h = true
-	elif ac.end_point.x > cell.x:
-		sprite.flip_h = false
-	await sprite.animation_finished
+	if play_animation:
+		sprite.play('attack')
+		if ac.end_point.x < cell.x:
+			sprite.flip_h = true
+		elif ac.end_point.x > cell.x:
+			sprite.flip_h = false
+		await sprite.animation_finished
 	attack_complete.emit()
-	sprite.play('idle')
+	if play_animation:
+		sprite.play('idle')
 
 func move_along_path(path: Array) -> void:
 	if path.is_empty():
@@ -122,6 +128,60 @@ func move_along_path(path: Array) -> void:
 func get_attack_paths() -> Array:
 	return abilities_db.get_attack_paths()
 
+## Action types this unit cannot perform this turn. Stun disables all actions.
+func get_disabled_action_types() -> Array:
+	for e in active_effects:
+		if e is UnitEffect and e.kind == UnitEffect.Kind.Stun:
+			return Actions.ACTION_ORDER.duplicate()
+	return []
+
+func add_effect(effect: UnitEffect) -> void:
+	if effect != null and effect.duration > 0:
+		active_effects.append(effect)
+
+## Returns a short string for UI: e.g. "Stun (1), HealOverTime (2)" or "None".
+func get_effects_display_text() -> String:
+	if active_effects.is_empty():
+		return "None"
+	var parts: Array[String] = []
+	for e in active_effects:
+		if not e is UnitEffect:
+			continue
+		var name_str := ""
+		match e.kind:
+			UnitEffect.Kind.Stun: name_str = "Stun"
+			UnitEffect.Kind.HealOverTime: name_str = "HealOverTime"
+			UnitEffect.Kind.MovementBuff: name_str = "MovementBuff"
+			_: name_str = "Effect"
+		parts.append("%s (%d)" % [name_str, e.duration])
+	return ", ".join(parts)
+
+## Call at end of turn: decrement duration, remove expired, apply HealOverTime etc.
+func tick_effects() -> void:
+	var to_remove: Array = []
+	for e in active_effects:
+		if not e is UnitEffect:
+			continue
+		if e.kind == UnitEffect.Kind.HealOverTime:
+			var heal_per_turn: int = int(e.params.get("heal_per_turn", 0))
+			if heal_per_turn > 0:
+				health = mini(health + heal_per_turn, max_health)
+				if health_bar:
+					health_bar.update_value(health)
+		e.duration -= 1
+		if e.duration <= 0:
+			to_remove.append(e)
+	for e in to_remove:
+		active_effects.erase(e)
+
+## Bonus move range from effects (e.g. MovementBuff). Summed for stacking.
+func get_move_range_bonus() -> int:
+	var total := 0
+	for e in active_effects:
+		if e is UnitEffect and e.kind == UnitEffect.Kind.MovementBuff:
+			total += int(e.params.get("move_bonus", 0))
+	return total
+
 func get_move_paths() -> Array:
 	return abilities_db.get_move_paths()
 
@@ -142,20 +202,26 @@ func _set_health(value: int) -> void:
 		sprite.play('death')
 		if not sprite.animation_finished.is_connected(_on_death_finished):
 			sprite.animation_finished.connect(_on_death_finished, CONNECT_ONE_SHOT)
+		# Fallback: hide after delay in case death animation doesn't exist or doesn't finish
+		get_tree().create_timer(2.0).timeout.connect(_on_death_finished, CONNECT_ONE_SHOT)
 
 func _on_death_finished() -> void:
 	death_animation_complete.emit()
 	visible = false
 	# Don't queue_free: enables replay/undo to restore state
 
-## Restore unit for replay/undo. Sets position, health, energy, and visibility.
-func restore_state(cell: Vector2, health_val: int, energy_val: int = -1) -> void:
+## Restore unit for replay/undo. Sets position, health, energy, effects, and visibility.
+func restore_state(cell: Vector2, health_val: int, energy_val: int = -1, effects_data: Array = []) -> void:
 	global_position = Navigation.cell_to_world(cell, true)
 	health = health_val
 	if energy_val >= 0:
 		energy = energy_val
 		if energy_bar and max_energy > 0:
 			energy_bar.update_value(energy)
+	active_effects.clear()
+	for d in effects_data:
+		if d is Dictionary:
+			active_effects.append(UnitEffect.from_dict(d))
 	visible = true
 	sprite.play("idle")
 	sprite.modulate = Color.WHITE

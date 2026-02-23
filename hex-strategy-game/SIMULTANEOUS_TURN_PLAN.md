@@ -46,7 +46,7 @@ This document outlines how to convert the hex-strategy-game from **sequential tu
 ### Phase 3: Simultaneous execution (order by type) ✓ DONE
 **Goal:** Execute all planned actions in a single batch, ordered by action type (like server3).
 
-**Implemented:** All moves execute first, then all attacks. Actions use `block_mode = Ignore` so paths are not blocked by units (simultaneous turn semantics).
+**Implemented:** All moves execute first, then all attacks. Paths are not blocked by units (simultaneous turn semantics).
 
 **Changes:**
 - Add action-type ordering (e.g. `["move", "attack"]` or match server3: fast move → fast attack → move → attack → slow move → slow attack).
@@ -116,7 +116,7 @@ src/unit/
 ## Execution Order Reference (server3.js)
 
 ```text
-fast move → fast attack → stun → move → attack → slow move → slow attack → spawn → reload → extract
+fast move → fast attack → move → attack → slow move → slow attack → spawn → reload → extract
 ```
 
 For hex-strategy-game initially: **move → attack** is enough. Extend later if you add fast/slow variants.

@@ -7,8 +7,10 @@
 script = ExtResource("1_script")
 name = "Zergling"
 type = 5
+faction = 1
 frames = ExtResource("2_frames")
-sprite_scale = Vector2(0.25, 0.25)
+sprite_scale = Vector2(0.17, 0.17)
+sprite_offset = Vector2(0, 5)
 move_action_keys = Array[String](["fast_move", "reload"])
 ability_action_keys = Array[String]([])
 passive_action_keys = Array[String](["attack_passive"])

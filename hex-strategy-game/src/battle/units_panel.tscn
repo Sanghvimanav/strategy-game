@@ -35,3 +35,22 @@ horizontal_alignment = 1
 [node name="units_list" type="VBoxContainer" parent="margin/vbox"]
 layout_mode = 2
 theme_override_constants/separation = 4
+
+[node name="hover_panel" type="PanelContainer" parent="margin/vbox"]
+layout_mode = 2
+visible = false
+
+[node name="hover_margin" type="MarginContainer" parent="margin/vbox/hover_panel"]
+layout_mode = 2
+theme_override_constants/margin_left = 8
+theme_override_constants/margin_top = 6
+theme_override_constants/margin_right = 8
+theme_override_constants/margin_bottom = 6
+
+[node name="hover_vbox" type="VBoxContainer" parent="margin/vbox/hover_panel/hover_margin"]
+layout_mode = 2
+theme_override_constants/separation = 4
+
+[node name="hover_hide_timer" type="Timer" parent="."]
+one_shot = true
+wait_time = 0.25

@@ -1,0 +1,46 @@
+extends Node
+## Test runner: runs all test modules and exits with 0 on success, 1 on failure.
+## Run with: godot --headless --path hex-strategy-game res://tests/test_runner.tscn
+
+var _fail_count: int = 0
+var _pass_count: int = 0
+
+func _ready() -> void:
+	print("Running tests...")
+	var TestActions = load("res://tests/test_actions.gd") as GDScript
+	var TestHexGrid = load("res://tests/test_hex_grid.gd") as GDScript
+	var TestTurnExecutor = load("res://tests/test_turn_executor.gd") as GDScript
+	var TestEventBus = load("res://tests/test_event_bus.gd") as GDScript
+
+	if not TestActions.run_all(self):
+		_fail_count += 1
+	else:
+		_pass_count += 1
+	if not TestHexGrid.run_all(self):
+		_fail_count += 1
+	else:
+		_pass_count += 1
+	if not TestTurnExecutor.run_all(self):
+		_fail_count += 1
+	else:
+		_pass_count += 1
+	if not TestEventBus.run_all(self):
+		_fail_count += 1
+	else:
+		_pass_count += 1
+
+	print("")
+	print("Result: %d passed, %d failed" % [_pass_count, _fail_count])
+	var exit_code := 1 if _fail_count > 0 else 0
+	# Delay quit so output is flushed
+	await get_tree().create_timer(0.1).timeout
+	get_tree().quit(exit_code)
+
+func _log(msg: String) -> void:
+	print("  %s" % msg)
+
+func _pass(msg: String) -> void:
+	print("  [PASS] %s" % msg)
+
+func _fail(msg: String) -> void:
+	print("  [FAIL] %s" % msg)

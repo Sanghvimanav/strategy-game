@@ -63,20 +63,3 @@ func cell_to_world(cell: Vector2, include_half_offset: bool = false) -> Vector2:
 func is_valid_cell(cell: Vector2) -> bool:
 	var key := HexGridType.get_cell_key(int(cell.x), int(cell.y))
 	return grid.has(key) and not grid[key].get("is_solid", false)
-
-func get_ac_block_point(ac: ActionInstance) -> Vector2:
-	var units: Array = unit_lookup.call()
-	units = units.filter(func(u): return u != ac.unit)
-	var unit_cells: Array = []
-	for u in units:
-		unit_cells.append(u.cell)
-	
-	for i in range(ac.full_path.size()):
-		var cell = ac.full_path[i]
-		if not is_valid_cell(cell):
-			return cell
-		for ucell in unit_cells:
-			if HexGridType.cell_equal(cell, ucell):
-				return cell
-	
-	return Vector2(INF, INF)

@@ -75,6 +75,18 @@ static func get_hexes_at_distance(center_q: int, center_r: int, dist: int) -> Ar
 				result.append(Vector2i(q, r))
 	return result
 
+## Returns all hexes within range_limit steps from center (inclusive).
+## From https://www.redblobgames.com/grids/hexagons/#range - coordinate range with q+r+s=0.
+static func get_hexes_in_range(center_q: int, center_r: int, range_limit: int) -> Array[Vector2i]:
+	var result: Array[Vector2i] = []
+	var n := clampi(range_limit, 0, 64)
+	for dq in range(-n, n + 1):
+		var r_lo := maxi(-n, -dq - n)
+		var r_hi := mini(n, -dq + n)
+		for dr in range(r_lo, r_hi + 1):
+			result.append(Vector2i(center_q + dq, center_r + dr))
+	return result
+
 ## Builds a path from (from_q, from_r) to (to_q, to_r) - each step toward target.
 static func build_path_to(from_q: int, from_r: int, to_q: int, to_r: int) -> Array[Vector2]:
 	var path: Array[Vector2] = []

@@ -8,16 +8,8 @@ enum ActionType {
 	Ability
 }
 
-enum BlockMode {
-	Cancel,
-	TruncateBefore,
-	TruncateOn,
-	Ignore,
-}
-
-@export var block_mode: BlockMode
 @export var display_name: String = ""
-## Action key from Actions registry (e.g. "move_short", "stun") for type lookup
+## Action key from Actions registry (e.g. "move_short", "attack_short") for type lookup
 var action_key: String = ""
 
 ## All values relative to the origin at (0, 0)

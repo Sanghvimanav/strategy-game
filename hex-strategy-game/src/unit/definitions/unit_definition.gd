@@ -7,11 +7,21 @@ enum Type {
 	Mage,
 	Rogue,
 	Peasant,
-	Zergling
+	Zergling,
+	TerranBase,
+	Viper
+}
+
+## Faction for team identity, ally/enemy rules, and future content. Used alongside group assignment.
+enum Faction {
+	None,
+	Zerg,
+	Terran
 }
 
 @export var name: String
 @export var type: Type
+@export var faction: Faction = Faction.None
 @export var frames: SpriteFrames
 ## Scale for the unit sprite (e.g. 0.25 for 128x128 sprites to match 32x32 size)
 @export var sprite_scale: Vector2 = Vector2.ONE
@@ -28,6 +38,8 @@ enum Type {
 @export var max_health: int = 0
 ## Max energy (0 = no energy bar). Ghost and similar units use energy for attacks.
 @export var max_energy: int = 0
+## Fog of war: hexes visible within this many steps. -1 = full visibility (no fog), 0 = no sight, >0 = sight range.
+@export var sight_range: int = -1
 ## Explicit move definitions. Ignored if move_action_keys is not empty.
 @export var move_definitions: Array[ActionDefinition] = []
 ## Explicit ability definitions. Ignored if ability_action_keys is not empty.
