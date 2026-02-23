@@ -23,7 +23,7 @@ jobs:
           unzip -q -o "${GODOT_ZIP}"
           GODOT_EXE="Godot_v${GODOT_VERSION}-stable_linux.x86_64"
           chmod +x "${GODOT_EXE}"
-          echo "${GODOT_EXE}" >> $GITHUB_ENV
+          echo "GODOT_EXE=${GODOT_EXE}" >> $GITHUB_ENV
           echo "GODOT=$(pwd)/${GODOT_EXE}" >> $GITHUB_ENV
 
       - name: Run tests
