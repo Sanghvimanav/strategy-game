@@ -29,7 +29,10 @@ jobs:
       - name: Run tests
         run: |
           cd hex-strategy-game
-          $GODOT --headless --path . res://tests/test_runner.tscn
+          # Godot 4 needs an import pass in a fresh checkout so class_name types resolve.
+          $GODOT --headless --path . --import
+          # Fail fast if Godot ever hangs instead of exiting with a test status.
+          timeout 10m $GODOT --headless --path . res://tests/test_runner.tscn
         env:
           # Avoid leak-check noise in logs
           GODOT_DISABLE_LEAK_CHECKS: 1
