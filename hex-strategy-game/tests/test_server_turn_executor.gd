@@ -11,6 +11,7 @@ static func run_all(tests: Node) -> bool:
 	ok = _test_validate_action_unit_not_found(tests) and ok
 	ok = _test_validate_action_dead_unit(tests) and ok
 	ok = _test_validate_action_target_out_of_range(tests) and ok
+	ok = _test_validate_action_ghost_attack_ray_range_window(tests) and ok
 	ok = _test_execute_turn_delegates_to_core(tests) and ok
 	return ok
 
@@ -22,6 +23,18 @@ static func _make_game_state() -> Dictionary:
 			]},
 			{ "name": "opponent", "ai": false, "units": [
 				{ "unit_id": 2, "def_path": "res://src/unit/definitions/zergling.tres", "cell": [-1, 1], "health": 1, "max_health": 1, "energy": 0, "max_energy": 0 }
+			]}
+		]
+	}
+
+static func _make_ghost_game_state() -> Dictionary:
+	return {
+		"groups": [
+			{ "name": "player", "ai": false, "units": [
+				{ "unit_id": 1, "def_path": "res://src/unit/definitions/ghost.tres", "cell": [0, 0], "health": 2, "max_health": 2, "energy": 3, "max_energy": 3 }
+			]},
+			{ "name": "opponent", "ai": false, "units": [
+				{ "unit_id": 2, "def_path": "res://src/unit/definitions/marine.tres", "cell": [3, 0], "health": 3, "max_health": 3, "energy": 4, "max_energy": 4 }
 			]}
 		]
 	}
@@ -121,6 +134,45 @@ static func _test_validate_action_target_out_of_range(tests: Node) -> bool:
 		tests._fail("out of range should return range-related error, got %s" % result.get("error", ""))
 		return false
 	tests._pass("validate_action target out of range")
+	return true
+
+static func _test_validate_action_ghost_attack_ray_range_window(tests: Node) -> bool:
+	tests._log("test_server_turn_executor: validate_action ghost attack_ray range window (2-3)")
+	var game_state := _make_ghost_game_state()
+
+	var too_close := {
+		"unit_id": 1,
+		"action_key": "attack_ray",
+		"path": [],
+		"end_point": [1, 0]
+	}
+	var too_close_result := ServerTurnExecutor.validate_action(game_state, too_close, "player")
+	if too_close_result.get("valid", false):
+		tests._fail("ghost attack_ray at distance 1 should fail validation")
+		return false
+
+	var valid := {
+		"unit_id": 1,
+		"action_key": "attack_ray",
+		"path": [],
+		"end_point": [3, 0]
+	}
+	var valid_result := ServerTurnExecutor.validate_action(game_state, valid, "player")
+	if not valid_result.get("valid", false):
+		tests._fail("ghost attack_ray at distance 3 should pass validation: %s" % valid_result.get("error", ""))
+		return false
+
+	var too_far := {
+		"unit_id": 1,
+		"action_key": "attack_ray",
+		"path": [],
+		"end_point": [4, 0]
+	}
+	var too_far_result := ServerTurnExecutor.validate_action(game_state, too_far, "player")
+	if too_far_result.get("valid", false):
+		tests._fail("ghost attack_ray at distance 4 should fail validation")
+		return false
+	tests._pass("validate_action ghost attack_ray range window (2-3)")
 	return true
 
 static func _test_execute_turn_delegates_to_core(tests: Node) -> bool:

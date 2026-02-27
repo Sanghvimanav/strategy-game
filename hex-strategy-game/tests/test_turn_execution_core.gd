@@ -16,6 +16,7 @@ static func run_all(tests: Node) -> bool:
 	ok = _test_get_damage_cells_target(tests) and ok
 	ok = _test_get_damage_cells_area_adjacent(tests) and ok
 	ok = _test_execute_turn_move_and_attack(tests) and ok
+	ok = _test_execute_turn_ghost_attack_ray_damages_only_target_tile(tests) and ok
 	ok = _test_execute_turn_zergling_fast_move_hits_ghost_before_ghost_move(tests) and ok
 	ok = _test_check_win_condition_one_alive(tests) and ok
 	ok = _test_check_win_condition_both_alive(tests) and ok
@@ -215,6 +216,43 @@ static func _test_execute_turn_move_and_attack(tests: Node) -> bool:
 		tests._fail("opponent should have 0 units after zergling dies, got %d" % opponent_units.size())
 		return false
 	tests._pass("execute_turn move and attack")
+	return true
+
+static func _test_execute_turn_ghost_attack_ray_damages_only_target_tile(tests: Node) -> bool:
+	tests._log("test_turn_execution_core: ghost attack_ray damages only target tile")
+	var game_state := {
+		"groups": [
+			{ "name": "player", "ai": false, "units": [
+				{ "unit_id": 1, "def_path": "res://src/unit/definitions/ghost.tres", "cell": [0, 0], "health": 2, "max_health": 2, "energy": 3, "max_energy": 3 }
+			]},
+			{ "name": "opponent", "ai": false, "units": [
+				{ "unit_id": 2, "def_path": "res://src/unit/definitions/marine.tres", "cell": [1, 0], "health": 3, "max_health": 3, "energy": 4, "max_energy": 4 },
+				{ "unit_id": 3, "def_path": "res://src/unit/definitions/marine.tres", "cell": [2, 0], "health": 3, "max_health": 3, "energy": 4, "max_energy": 4 }
+			]}
+		]
+	}
+	var player_actions := {
+		"player": [
+			{ "unit_id": 1, "action_key": "attack_ray", "path": [], "end_point": [2, 0] }
+		],
+		"opponent": []
+	}
+	TurnExecutionCore.execute_turn(game_state, player_actions)
+	var near_enemy := TurnExecutionCore.find_unit_by_id(game_state, 2)
+	if near_enemy.is_empty():
+		tests._fail("intermediate enemy should still be alive")
+		return false
+	if near_enemy.unit.get("health", 0) != 3:
+		tests._fail("intermediate enemy at [1,0] should take no damage, got health %s" % near_enemy.unit.get("health", 0))
+		return false
+	var target_enemy := TurnExecutionCore.find_unit_by_id(game_state, 3)
+	if target_enemy.is_empty():
+		tests._fail("target enemy should still be alive with reduced health")
+		return false
+	if target_enemy.unit.get("health", 0) != 2:
+		tests._fail("target enemy at [2,0] should take exactly 1 damage, got health %s" % target_enemy.unit.get("health", 0))
+		return false
+	tests._pass("ghost attack_ray damages only target tile")
 	return true
 
 static func _test_execute_turn_zergling_fast_move_hits_ghost_before_ghost_move(tests: Node) -> bool:
