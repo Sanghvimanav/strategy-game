@@ -13,10 +13,33 @@ var _panning := false
 
 func _ready() -> void:
 	# Navigation is initialized by hex_map._ready() (runs before units)
-	var scenario := Scenarios.get_selected_scenario()
-	if not scenario.is_empty():
-		units.apply_scenario(scenario)
-	units.start_battle()
+	if MultiplayerState.is_multiplayer and not MultiplayerState.pending_battle_state.is_empty():
+		units.apply_multiplayer_state(MultiplayerState.pending_battle_state)
+		units.multiplayer_my_group = MultiplayerState.my_group
+		units.start_battle()
+		var gs: Node = get_node_or_null("/root/GameServer")
+		if gs != null and gs.has_signal("host_message_received"):
+			if MultiplayerState.is_host:
+				gs.host_message_received.connect(_on_game_server_message)
+			elif gs.has_signal("server_message_received"):
+				gs.server_message_received.connect(_on_game_server_message)
+	else:
+		var scenario := Scenarios.get_selected_scenario()
+		if not scenario.is_empty():
+			units.apply_scenario(scenario)
+		units.start_battle()
+
+func _on_game_server_message(obj: Dictionary) -> void:
+	var msg_type: String = str(obj.get("type", ""))
+	if msg_type == "game_state":
+		var state: Dictionary = obj.get("state", {})
+		if state.is_empty():
+			return
+		var turn_result: Dictionary = obj.get("turn_result", {})
+		if MultiplayerState.is_multiplayer and not turn_result.is_empty():
+			units.play_resolved_turn(turn_result, state)
+		else:
+			units.apply_server_state(state)
 
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventMouseButton:

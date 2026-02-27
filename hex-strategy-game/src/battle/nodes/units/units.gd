@@ -3,11 +3,14 @@ extends Node2D
 
 const BattlePhase = preload("res://src/battle/battle_phase.gd")
 const TurnExecutor = preload("res://src/battle/turn_executor.gd")
+const TurnExecutionCore = preload("res://src/battle/turn_execution_core.gd")
 const PlanningAI = preload("res://src/battle/ai/planning_ai.gd")
 const UNIT_SCENE := preload("res://src/unit/unit.tscn")
 
 var groups: Array = []
 var ai_group_names: Array[String] = []
+## In multiplayer, only units in this group can be controlled (e.g. "player" or "opponent").
+var multiplayer_my_group: String = ""
 var battle_phase: BattlePhase.Phase = BattlePhase.Phase.PLANNING
 var planning_unit_index: int = 0
 var current_unit: Unit
@@ -37,8 +40,12 @@ func _on_action_key_selected(action_key: String) -> void:
 			EventBus.action_key_selected.emit("")
 
 func _on_execute_turn_requested() -> void:
-	if battle_phase == BattlePhase.Phase.PLANNING and _all_units_have_planned_action():
-		_execute_planned_actions()
+	if battle_phase != BattlePhase.Phase.PLANNING or not _all_units_have_planned_action():
+		return
+	if MultiplayerState.is_multiplayer:
+		_submit_actions_to_server()
+		return
+	_execute_planned_actions()
 
 func _refresh_groups() -> void:
 	groups.clear()
@@ -90,6 +97,120 @@ func apply_scenario(scenario: Dictionary) -> void:
 			group_node.add_child(unit)
 	_refresh_groups()
 
+## Build board from server game state (multiplayer). Sets unit_id on each unit for submit_actions.
+func apply_multiplayer_state(state: Dictionary) -> void:
+	if state.is_empty():
+		return
+	ai_group_names.clear()
+	for g in state.get("groups", []):
+		var group_name: String = str(g.get("name", ""))
+		if g.get("ai", false):
+			ai_group_names.append(group_name)
+		var group_node := get_node_or_null(group_name)
+		if group_node == null:
+			group_node = Node2D.new()
+			group_node.name = group_name
+			group_node.y_sort_enabled = true
+			add_child(group_node)
+		for c in group_node.get_children():
+			group_node.remove_child(c)
+			c.queue_free()
+		for u_spec in g.get("units", []):
+			var def_path: String = str(u_spec.get("def_path", ""))
+			if def_path.is_empty():
+				continue
+			var cell_arr: Array = u_spec.get("cell", [0, 0])
+			var cell: Vector2i = Vector2i(int(cell_arr[0]), int(cell_arr[1])) if cell_arr.size() >= 2 else Vector2i.ZERO
+			var def: UnitDefinition = load(def_path) as UnitDefinition
+			if def == null:
+				continue
+			var unit: Unit = UNIT_SCENE.instantiate() as Unit
+			unit.def = def
+			unit.starting_cell = cell
+			unit.max_health = int(u_spec.get("max_health", def.max_health))
+			unit.health = int(u_spec.get("health", unit.max_health))
+			unit.max_energy = int(u_spec.get("max_energy", def.max_energy))
+			unit.energy = int(u_spec.get("energy", unit.max_energy))
+			unit.set_meta("unit_id", int(u_spec.get("unit_id", 0)))
+			group_node.add_child(unit)
+	_refresh_groups()
+
+## Update unit positions and stats from server state (after turn execution). Remove dead units. Then start next planning.
+func apply_server_state(state: Dictionary) -> void:
+	var groups_ser: Array = state.get("groups", [])
+	for g in groups_ser:
+		var group_name: String = str(g.get("name", ""))
+		var group_node = get_node_or_null(group_name)
+		if group_node == null:
+			continue
+		var live_ids: Array[int] = []
+		for u_spec in g.get("units", []):
+			var unit_id: int = int(u_spec.get("unit_id", 0))
+			live_ids.append(unit_id)
+			var cell_arr: Array = u_spec.get("cell", [0, 0])
+			var cell: Vector2i = Vector2i(int(cell_arr[0]), int(cell_arr[1])) if cell_arr.size() >= 2 else Vector2i.ZERO
+			var health: int = int(u_spec.get("health", 0))
+			var energy: int = int(u_spec.get("energy", 0))
+			for child in group_node.get_children():
+				if not child is Unit:
+					continue
+				if not child.has_meta("unit_id") or child.get_meta("unit_id") != unit_id:
+					continue
+				child.global_position = Navigation.cell_to_world(Vector2(cell.x, cell.y), true)
+				child.health = health
+				child.energy = energy
+				if child.energy_bar and child.max_energy > 0:
+					child.energy_bar.update_value(energy)
+				break
+		# Remove units no longer in server state (dead)
+		var to_remove: Array[Node] = []
+		for child in group_node.get_children():
+			if not child is Unit:
+				continue
+			if not child.has_meta("unit_id"):
+				continue
+			var uid: int = child.get_meta("unit_id")
+			if uid not in live_ids:
+				to_remove.append(child)
+		for node in to_remove:
+			node.queue_free()
+	turn_number = int(state.get("turn", 1))
+	EventBus.turn_changed.emit(turn_number)
+	_clear_all_planned_actions()
+	# Refresh fog from current unit positions (per-player vision in multiplayer).
+	var hex_map_node = get_parent().get_node_or_null("hex_map")
+	if hex_map_node and hex_map_node.has_method("refresh_fog"):
+		hex_map_node.refresh_fog()
+	_begin_planning()
+
+func _submit_actions_to_server() -> void:
+	var actions: Array = []
+	for u in get_active_units():
+		if u.planned_action == null:
+			continue
+		var ac = u.planned_action
+		var unit_id: int = u.get_meta("unit_id", 0) if u.has_meta("unit_id") else 0
+		var action_key: String = ac.definition.action_key if ac.definition else ""
+		var path_arr: Array = []
+		for p in ac.path:
+			path_arr.append([int(p.x), int(p.y)])
+		# Server expects path to include end cell for move actions (full_path = path + [end], full_path.size() == build_path_to.size() + 1).
+		var atype: String = Actions.get_action_type(action_key) if action_key else ""
+		if atype in ["fast move", "move", "slow move"]:
+			path_arr.append([int(ac.end_point.x), int(ac.end_point.y)])
+		var end_arr: Array = [int(ac.end_point.x), int(ac.end_point.y)]
+		actions.append({ unit_id = unit_id, action_key = action_key, path = path_arr, end_point = end_arr })
+	var gs = get_node_or_null("/root/GameServer")
+	if gs == null:
+		return
+	var msg: Dictionary = { type = "submit_actions", actions = actions }
+	if MultiplayerState.is_host:
+		if gs.has_method("receive_host_packet"):
+			gs.receive_host_packet(msg)
+	else:
+		gs.server_receive_packet.rpc_id(1, msg)
+	# Button stays disabled until server sends game_state (turn executed)
+
 func start_battle() -> void:
 	turn_number = 1
 	battle_phase = BattlePhase.Phase.PLANNING
@@ -102,6 +223,8 @@ func start_battle() -> void:
 func get_active_units() -> Array[Unit]:
 	var units: Array[Unit] = []
 	for group in groups:
+		if not multiplayer_my_group.is_empty() and group.name != multiplayer_my_group:
+			continue
 		for child in group.get_children():
 			if child is Unit and child.is_active:
 				units.append(child)
@@ -310,6 +433,70 @@ func _finish_turn_after_execution() -> void:
 	EventBus.replay_available_changed.emit(true)
 	_begin_planning()
 
+## Build dictionary game_state from live Unit nodes for TurnExecutionCore.
+## Assigns unit_id = instance_id on units that don't have it (SP).
+func _build_game_state_from_scene() -> Dictionary:
+	var groups_arr: Array = []
+	for group in groups:
+		if not group is Node2D:
+			continue
+		var g_dict: Dictionary = {
+			"name": group.name,
+			"ai": group.name in ai_group_names,
+			"units": []
+		}
+		for child in group.get_children():
+			if not child is Unit:
+				continue
+			var u: Unit = child
+			if not u.has_meta("unit_id"):
+				u.set_meta("unit_id", u.get_instance_id())
+			var unit_id: int = u.get_meta("unit_id")
+			var cell_arr: Array = [u.cell.x, u.cell.y]
+			g_dict.units.append({
+				"unit_id": unit_id,
+				"def_path": u.def.resource_path if u.def else "",
+				"cell": cell_arr,
+				"health": u.health,
+				"max_health": u.max_health,
+				"energy": u.energy,
+				"max_energy": u.max_energy,
+				"is_active": u.is_active
+			})
+		groups_arr.append(g_dict)
+	return { "groups": groups_arr }
+
+## Build player_actions from planned actions and passives for all groups.
+func _build_player_actions_from_units(game_state: Dictionary) -> Dictionary:
+	var player_actions: Dictionary = {}
+	for group in groups:
+		if not group is Node2D:
+			continue
+		var gname: String = group.name
+		player_actions[gname] = []
+		for child in group.get_children():
+			if not child is Unit or not child.is_active:
+				continue
+			var u: Unit = child
+			var unit_id: int = u.get_meta("unit_id", u.get_instance_id()) if u.has_meta("unit_id") else u.get_instance_id()
+			if u.planned_action != null:
+				var ac: ActionInstance = u.planned_action
+				var action_key: String = ac.definition.action_key if ac.definition else ""
+				var path_arr: Array = []
+				for p in ac.path:
+					path_arr.append([int(p.x), int(p.y)])
+				var end_arr: Array = [int(ac.end_point.x), int(ac.end_point.y)]
+				var atype: String = Actions.get_action_type(action_key) if action_key else ""
+				if atype in ["fast move", "move", "slow move"]:
+					path_arr.append(end_arr)
+				player_actions[gname].append({
+					"unit_id": unit_id,
+					"action_key": action_key,
+					"path": path_arr,
+					"end_point": end_arr
+				})
+	return player_actions
+
 func _execute_planned_actions() -> void:
 	print("[EXEC] _execute_planned_actions START")
 	battle_phase = BattlePhase.Phase.EXECUTING
@@ -317,10 +504,17 @@ func _execute_planned_actions() -> void:
 	EventBus.show_selected_unit_cell.emit(null)
 	EventBus.show_move_path.emit(null, Vector2.ZERO)
 	EventBus.show_move_acs.emit([])
-	_record_turn_before_execution()
-	await _run_planned_actions_phase3()
-	print("[EXEC] _run_planned_actions_phase3 DONE, calling _finish_turn_after_execution")
-	call_deferred("_finish_turn_after_execution")
+	var game_state := _build_game_state_from_scene()
+	var player_actions := _build_player_actions_from_units(game_state)
+	var recording := TurnExecutionCore.execute_turn(game_state, player_actions)
+	await play_resolved_turn(recording, game_state)
+	for u in get_all_units():
+		if is_instance_valid(u) and u is Unit and u.is_active:
+			u.tick_effects()
+	var state := game_state.duplicate()
+	state["turn"] = turn_number
+	apply_server_state(state)
+	print("[EXEC] SP turn execution DONE")
 
 func _record_turn_before_execution() -> void:
 	last_turn_recording = { "actions": [], "died_ids": [], "summary": [], "before_state": {}, "damage_causers": {}, "applied_effects": [] }
@@ -575,6 +769,202 @@ func _run_planned_actions_phase3() -> void:
 	for u in active:
 		u.planned_action = null
 	print("[EXEC] planned_action cleared")
+
+## Build summary entries from pipeline recording.actions for replay display.
+func _build_summary_from_recording_actions(recording_actions: Array) -> Array:
+	var summary: Array = []
+	for action in recording_actions:
+		if not action is Dictionary:
+			continue
+		var u = action.get("unit")
+		if not is_instance_valid(u) or not u is Unit:
+			continue
+		var atype: String = str(action.get("type", ""))
+		var action_name: String = "Action"
+		var action_key: String = ""
+		var is_passive: bool = false
+		var ac = action.get("ac")
+		if ac is ActionInstance and ac.definition:
+			action_name = ac.definition.display_name if ac.definition.display_name else "Action"
+			action_key = ac.definition.action_key
+			is_passive = action_key in u.def.passive_action_keys if u.def else false
+		elif action.has("action_key"):
+			action_key = str(action.get("action_key", ""))
+			var cfg: Dictionary = Actions.get_action_config(action_key)
+			action_name = cfg.get("name", "Action")
+		elif atype == "move":
+			action_name = "Move"
+		var entry: Dictionary = {
+			"unit_name": u.def.name if u.def else "Unit",
+			"action_name": action_name,
+			"instance_id": u.get_instance_id(),
+			"action_type": atype
+		}
+		if is_passive:
+			entry["is_passive"] = true
+			entry["action_key"] = action_key
+		summary.append(entry)
+	return summary
+
+## Build actions_by_type directly from server turn_result (dictionary recording) for multiplayer animation.
+func _build_actions_by_type_from_server(turn_result: Dictionary) -> Dictionary:
+	var actions_by_type: Dictionary = {}
+	for t in Actions.ACTION_ORDER:
+		actions_by_type[t] = []
+	# Map unit_id -> Unit node using multiplayer unit_id meta set in apply_multiplayer_state
+	var id_to_unit: Dictionary = {}
+	for u in get_all_units():
+		if u.has_meta("unit_id"):
+			id_to_unit[int(u.get_meta("unit_id"))] = u
+	var server_actions: Array = []
+	if turn_result.has("actions"):
+		server_actions = turn_result["actions"]
+	for a in server_actions:
+		if not (a is Dictionary):
+			continue
+		var atype: String = str(a.get("type", ""))
+		if atype.is_empty():
+			continue
+		var uid: int = int(a.get("unit_id", -1))
+		var unit = id_to_unit.get(uid)
+		if unit == null:
+			continue
+		var entry: Dictionary = { "unit": unit, "is_move": (atype == "move") }
+		if atype == "move":
+			var path_spec: Array = a.get("path", [])
+			var cells: Array[Vector2] = []
+			for c in path_spec:
+				if c is Array and c.size() >= 2:
+					cells.append(Vector2(int(c[0]), int(c[1])))
+			if cells.size() < 2:
+				continue
+			var ac := ActionInstance.new(null, unit)
+			ac.path = cells.slice(0, cells.size() - 1)
+			ac.end_point = cells[cells.size() - 1]
+			entry["ac"] = ac
+		else:
+			var action_key: String = str(a.get("action_key", ""))
+			if action_key.is_empty():
+				continue
+			var src = a.get("ac", {})
+			var path_spec: Array = []
+			var end_spec = null
+			if src is Dictionary:
+				if src.has("path"):
+					path_spec = src["path"]
+				if src.has("end_point"):
+					end_spec = src["end_point"]
+			if end_spec == null:
+				end_spec = a.get("end_point", [0, 0])
+			if path_spec.is_empty():
+				path_spec = a.get("path", [])
+			var ac_inst := ActionInstance.new(null, unit)
+			var defs: Array = Actions.get_ability_definitions_for_action(action_key)
+			if not defs.is_empty():
+				ac_inst.definition = defs[0]
+			var cells: Array[Vector2] = []
+			for c in path_spec:
+				if c is Array and c.size() >= 2:
+					cells.append(Vector2(int(c[0]), int(c[1])))
+			ac_inst.path = cells
+			if end_spec is Array and end_spec.size() >= 2:
+				ac_inst.end_point = Vector2(int(end_spec[0]), int(end_spec[1]))
+			else:
+				ac_inst.end_point = unit.cell
+			entry["ac"] = ac_inst
+		if not actions_by_type.has(atype):
+			actions_by_type[atype] = []
+		actions_by_type[atype].append(entry)
+	return actions_by_type
+
+## Animate a resolved turn using TurnExecutor and store recording for replay.
+## Used by both single-player (core-produced recording) and multiplayer (server turn_result).
+## final_state is the authoritative state after this turn (used for turn number and optional resync).
+func play_resolved_turn(turn_result: Dictionary, final_state: Dictionary) -> void:
+	if turn_result.is_empty():
+		# Fallback: just snap to server state if we somehow have no recording.
+		if not final_state.is_empty():
+			apply_server_state(final_state)
+		return
+	print("[EXEC] play_resolved_turn START")
+	# Snapshot before_state for replay/undo (same shape as _record_turn_before_execution, but includes all units).
+	var before_state: Dictionary = {}
+	for u in get_all_units():
+		if not (is_instance_valid(u) and u is Unit):
+			continue
+		var s: Dictionary = { "cell": u.cell, "health": u.health }
+		if u.max_energy > 0:
+			s["energy"] = u.energy
+		var effects_data: Array = []
+		for e in u.active_effects:
+			if e is UnitEffect:
+				effects_data.append(e.to_dict())
+		s["effects"] = effects_data
+		before_state[u.get_instance_id()] = s
+
+	var actions_by_type := _build_actions_by_type_from_server(turn_result)
+	var recording := { "actions": [], "died_ids": [], "summary": [], "damage_causers": {}, "applied_effects": [] }
+	var ctx := TurnExecutor.ExecutionContext.new(
+		groups,
+		true,
+		recording,
+		_get_units_at_cell_for_planning,
+		get_tree()
+	)
+	var hex_map_node = get_parent().get_node_or_null("hex_map")
+	if hex_map_node and hex_map_node.has_method("refresh_fog"):
+		ctx.phase_callback = hex_map_node.refresh_fog
+
+	battle_phase = BattlePhase.Phase.EXECUTING
+	EventBus.unit_selected_for_planning.emit(null)
+	EventBus.show_selected_unit_cell.emit(null)
+	EventBus.show_move_path.emit(null, Vector2.ZERO)
+	EventBus.show_move_acs.emit([])
+
+	await TurnExecutor.run_pipeline(actions_by_type, ctx)
+	print("[EXEC] pipeline DONE")
+
+	# Store recording for replay: add before_state, damage_by_id, and summary.
+	recording["before_state"] = before_state
+	recording["damage_by_id"] = ctx.damage_by_id.duplicate()
+	recording["summary"] = _build_summary_from_recording_actions(recording["actions"])
+	last_turn_recording = recording
+	_filter_passive_summary_entries()
+
+	# Death animations (mirrors _run_planned_actions_phase3).
+	var units_that_will_die: Array = []
+	for u in get_all_units():
+		if u.health <= 0:
+			units_that_will_die.append(u)
+	var to_await := units_that_will_die.filter(func(u): return is_instance_valid(u))
+	if not to_await.is_empty():
+		var completed_arr := [0]
+		var total := to_await.size()
+		for unit in to_await:
+			unit.death_animation_complete.connect(func(): completed_arr[0] += 1, CONNECT_ONE_SHOT)
+		var timeout := get_tree().create_timer(5.0)
+		while completed_arr[0] < total:
+			await get_tree().process_frame
+			if timeout.time_left <= 0:
+				for u in to_await:
+					if is_instance_valid(u):
+						u.visible = false
+				break
+	print("[EXEC] death anims DONE")
+	await get_tree().process_frame
+
+	# Turn bookkeeping and fog refresh.
+	if not final_state.is_empty() and final_state.has("turn"):
+		turn_number = int(final_state["turn"])
+	else:
+		turn_number += 1
+	EventBus.turn_changed.emit(turn_number)
+	if hex_map_node and hex_map_node.has_method("refresh_fog"):
+		hex_map_node.refresh_fog()
+	_clear_all_planned_actions()
+	battle_phase = BattlePhase.Phase.PLANNING
+	EventBus.replay_available_changed.emit(true)
+	_begin_planning()
 
 ## Collects planned + passive actions from units, grouped by type.
 func _collect_actions(active: Array) -> Dictionary:

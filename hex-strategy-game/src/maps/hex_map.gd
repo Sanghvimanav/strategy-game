@@ -72,8 +72,8 @@ func update_fog(visible_cell_keys: Dictionary) -> void:
 	var no_fog: bool = visible_cell_keys.is_empty()
 	for key in _hex_nodes:
 		var poly: Polygon2D = _hex_nodes[key]
-		var base_color: Color = _hex_base_colors.get(key, poly.color)
-		if no_fog or visible_cell_keys.get(key, false):
+		var base_color: Color = _hex_base_colors[key] if _hex_base_colors.has(key) else poly.color
+		if no_fog or (visible_cell_keys[key] if visible_cell_keys.has(key) else false):
 			poly.color = base_color
 			poly.visible = true
 		else:
@@ -94,8 +94,8 @@ func _refresh_fog() -> void:
 	refresh_fog()
 
 ## Returns Dictionary "q,r" -> true for all hexes visible to any observer unit.
-## Observers = units in first group (player) that have sight_range > 0.
-## If no observers (sight_range > 0), returns full map so fog is off.
+## Observers = current player's group (multiplayer_my_group in multiplayer, else first group).
+## Uses each observer unit's def.sight_range and current position; call after placement or movement.
 func _compute_visible_cell_keys() -> Dictionary:
 	var result: Dictionary = {}
 	var units_node = get_parent().get_node_or_null("units")
@@ -104,9 +104,18 @@ func _compute_visible_cell_keys() -> Dictionary:
 	var groups: Array = units_node.groups if "groups" in units_node else []
 	if groups.is_empty():
 		return result
-	# First group = player (observers for fog)
-	var player_group: Node = groups[0]
-	for child in player_group.get_children():
+	# Observer group: in multiplayer use multiplayer_my_group; else first group (player).
+	var observer_group: Node = null
+	var v = units_node.get("multiplayer_my_group")
+	var my_group_name: String = "" if v == null else str(v)
+	if not my_group_name.is_empty():
+		for g in groups:
+			if str(g.name) == my_group_name:
+				observer_group = g
+				break
+	if observer_group == null:
+		observer_group = groups[0]
+	for child in observer_group.get_children():
 		if not child is Unit:
 			continue
 		var u: Unit = child
@@ -132,19 +141,23 @@ func _compute_visible_cell_keys() -> Dictionary:
 			result[k] = true
 	return result
 
-## Hides enemy units (non-player groups) when their cell is not in visible_cell_keys.
-## Dead units are always hidden and never shown by fog logic.
+## Hides enemy units (non-observer groups) when their cell is not in visible_cell_keys.
+## Observer group = multiplayer_my_group in multiplayer, else first group. Dead units always hidden.
 func _update_enemy_visibility(visible_cell_keys: Dictionary) -> void:
 	var units_node = get_parent().get_node_or_null("units")
 	if not units_node or "groups" not in units_node:
 		return
 	var groups: Array = units_node.groups
-	if groups.size() <= 1:
+	if groups.is_empty():
 		return
+	var v2 = units_node.get("multiplayer_my_group")
+	var my_group_name: String = "" if v2 == null else str(v2)
+	var observer_group_name: String = my_group_name if not my_group_name.is_empty() else str(groups[0].name)
 	var show_all: bool = visible_cell_keys.is_empty()
-	# groups[0] = player; rest = enemy
-	for i in range(1, groups.size()):
-		var group_node: Node = groups[i]
+	for g in groups:
+		if str(g.name) == observer_group_name:
+			continue  # don't hide our own units
+		var group_node: Node = g
 		for child in group_node.get_children():
 			if not child is Unit:
 				continue
@@ -153,4 +166,4 @@ func _update_enemy_visibility(visible_cell_keys: Dictionary) -> void:
 				u.visible = false
 				continue
 			var cell_key := HexGrid.get_cell_key(int(u.cell.x), int(u.cell.y))
-			u.visible = show_all or visible_cell_keys.get(cell_key, false)
+			u.visible = show_all or (visible_cell_keys[cell_key] if visible_cell_keys.has(cell_key) else false)

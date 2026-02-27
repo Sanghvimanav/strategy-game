@@ -11,6 +11,9 @@ func _ready() -> void:
 	var TestHexGrid = load("res://tests/test_hex_grid.gd") as GDScript
 	var TestTurnExecutor = load("res://tests/test_turn_executor.gd") as GDScript
 	var TestEventBus = load("res://tests/test_event_bus.gd") as GDScript
+	var TestTurnExecutionCore = load("res://tests/test_turn_execution_core.gd") as GDScript
+	var TestServerTurnExecutor = load("res://tests/test_server_turn_executor.gd") as GDScript
+	var TestUnifiedPipeline = load("res://tests/test_unified_pipeline.gd") as GDScript
 
 	if not TestActions.run_all(self):
 		_fail_count += 1
@@ -25,6 +28,18 @@ func _ready() -> void:
 	else:
 		_pass_count += 1
 	if not TestEventBus.run_all(self):
+		_fail_count += 1
+	else:
+		_pass_count += 1
+	if not TestTurnExecutionCore.run_all(self):
+		_fail_count += 1
+	else:
+		_pass_count += 1
+	if not TestServerTurnExecutor.run_all(self):
+		_fail_count += 1
+	else:
+		_pass_count += 1
+	if not TestUnifiedPipeline.run_all(self):
 		_fail_count += 1
 	else:
 		_pass_count += 1

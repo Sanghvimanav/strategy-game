@@ -55,7 +55,8 @@ func _ready() -> void:
 	if def.max_health > 0:
 		max_health = def.max_health
 		health = max_health
-	health_bar.init(health, max_health)
+	if health_bar:
+		health_bar.init(health, max_health)
 	max_energy = def.max_energy
 	energy = def.start_energy if def.start_energy >= 0 else max_energy
 	if energy_bar:
@@ -197,7 +198,8 @@ func _set_health(value: int) -> void:
 		# Don't await - lets all hit animations play in parallel (damage applied in one batch)
 		sprite.animation_finished.connect(func(): sprite.play('idle'), CONNECT_ONE_SHOT)
 	health = value
-	health_bar.update_value(health)
+	if health_bar:
+		health_bar.update_value(health)
 	if health == 0:
 		sprite.play('death')
 		if not sprite.animation_finished.is_connected(_on_death_finished):

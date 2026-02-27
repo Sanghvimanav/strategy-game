@@ -28,7 +28,7 @@ func _ready() -> void:
 	# Start connection immediately so we get welcome / request_username
 	status_label.text = "Connecting..."
 	_log("Connecting...")
-	var err := GameState.connect_to_server()
+	var err: Error = GameState.connect_to_server()
 	if err != OK:
 		status_label.text = "Connection failed"
 		_log("Failed to start connection: %s" % error_string(err))

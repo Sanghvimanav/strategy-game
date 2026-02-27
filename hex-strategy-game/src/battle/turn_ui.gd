@@ -8,8 +8,12 @@ extends CanvasLayer
 func _ready() -> void:
 	execute_button.pressed.connect(_on_execute_pressed)
 	execute_button.disabled = true
+	if MultiplayerState.is_multiplayer:
+		execute_button.text = "Submit"
 	if scenarios_button:
 		scenarios_button.pressed.connect(_on_scenarios_pressed)
+		if MultiplayerState.is_multiplayer:
+			scenarios_button.visible = false
 	if replay_button:
 		replay_button.pressed.connect(_on_replay_pressed)
 		replay_button.disabled = true
@@ -25,6 +29,8 @@ func _on_turn_changed(turn_number: int) -> void:
 
 func _on_planning_started() -> void:
 	execute_button.disabled = true
+	if MultiplayerState.is_multiplayer:
+		execute_button.text = "Submit"
 
 func _on_planning_complete() -> void:
 	execute_button.disabled = false
@@ -32,6 +38,8 @@ func _on_planning_complete() -> void:
 func _on_execute_pressed() -> void:
 	EventBus.execute_turn_requested.emit()
 	execute_button.disabled = true
+	if MultiplayerState.is_multiplayer:
+		execute_button.text = "Waiting for other players..."
 
 func _on_replay_pressed() -> void:
 	EventBus.replay_turn_requested.emit()

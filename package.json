@@ -1,20 +1,6 @@
 {
-  "name": "game-server",
+  "name": "strategy-game-multiplayer",
   "version": "1.0.0",
-  "description": "A WebSocket-based game server for a strategy game.",
-  "main": "server3.js",
-  "scripts": {
-    "start": "node server3.js"
-  },
-  "keywords": [
-    "websocket",
-    "game-server",
-    "strategy-game"
-  ],
-  "author": "",
-  "license": "MIT",
-  "dependencies": {
-    "dotenv": "^16.4.7",
-    "ws": "^8.18.0"
-  }
+  "description": "Hex strategy game – multiplayer via Godot server",
+  "private": true
 }

@@ -1,19 +1,18 @@
 extends Node
-## Central game state and WebSocket client.
-## Connects to the same server as the HTML client; keeps state in sync with 'update' messages.
+## Central game state and ENet client.
+## Connects via ENetMultiplayerPeer; receives messages via GameServer.client_receive_message -> handle_server_message().
 
-const SERVER_URL := "wss://strategy-game.onrender.com"
-# const SERVER_URL := "ws://127.0.0.1:8080"
+const DEFAULT_HOST := "127.0.0.1"
+const DEFAULT_PORT := 8080
 
-var socket: WebSocketPeer
 var game_state: Dictionary = {}
 var player_id: int = -1
 var player_color: String = ""
 var player_username: String = "GodotPlayer"
-var actions_list: Dictionary = {}  # ACTIONS from server
+var actions_list: Dictionary = {}
 
 signal connected_to_server
-signal username_requested  # Server wants a username; UI should show input and then call send_username()
+signal username_requested
 signal welcome_received(player_id: int, available_colors: Array, game_types: Array)
 signal color_selected(color: String)
 signal game_state_updated(state: Dictionary)
@@ -21,77 +20,69 @@ signal actions_list_received(actions: Dictionary)
 signal game_over(winner_id: int)
 signal error_message(message: String)
 
-var _was_connected := false
-
 func _ready() -> void:
-	socket = WebSocketPeer.new()
+	pass
 
-func _process(_delta: float) -> void:
-	# Must poll every frame so CONNECTING can become OPEN
-	socket.poll()
-	var state := socket.get_ready_state()
-	if state == WebSocketPeer.STATE_OPEN:
-		if not _was_connected:
-			_was_connected = true
-			connected_to_server.emit()
-		while true:
-			var packet := socket.get_packet()
-			if packet.size() == 0:
-				break
-			var text := packet.get_string_from_utf8()
-			_handle_message(text)
-	elif state == WebSocketPeer.STATE_CLOSED:
-		var code := socket.get_close_code()
-		if code != -1:
-			error_message.emit("Connection closed: code %d" % code)
 
-func connect_to_server() -> Error:
-	return socket.connect_to_url(SERVER_URL)
+func _get_game_server() -> Node:
+	return get_node_or_null("/root/GameServer")
 
-func send_color_selection(color: String) -> void:
-	_send({ type = "color_selection", color = color })
 
-func send_action(unit_id: int, action_key: String, path: Array) -> void:
-	_send({
-		type = "action",
-		action = {
-			unitId = unit_id,
-			actionKey = action_key,
-			path = path
-		}
-	})
+func connect_to_server(host: String = DEFAULT_HOST, port: int = DEFAULT_PORT) -> Error:
+	var gs: Node = _get_game_server()
+	if gs == null:
+		error_message.emit("GameServer node not found. Is main scene root named GameServer?")
+		return ERR_DOES_NOT_EXIST
+	if not gs.has_method("join_server"):
+		error_message.emit("GameServer has no join_server method")
+		return ERR_METHOD_NOT_FOUND
+	return gs.join_server(host, port)
 
-func send_restart() -> void:
-	_send({ type = "restart" })
 
-func send_game_type_selection(game_type: String) -> void:
-	_send({ type = "game_type_selection", gameType = game_type })
+func _on_connected_to_server() -> void:
+	connected_to_server.emit()
+	send_username(player_username)
+
 
 func send_username(username: String) -> void:
 	player_username = username
-	_send({ type = "username", username = username })
+	var gs: Node = _get_game_server()
+	if gs != null and gs.has_method("server_receive_username"):
+		gs.server_receive_username.rpc_id(1, username)
 
-func _send(obj: Dictionary) -> void:
-	if socket.get_ready_state() != WebSocketPeer.STATE_OPEN:
-		return
-	socket.send_text(JSON.stringify(obj))
 
-func _handle_message(text: String) -> void:
-	var json := JSON.new()
-	var err := json.parse(text)
-	if err != OK:
-		push_error("JSON parse error: " + text)
-		error_message.emit("JSON parse error")
-		return
-	var msg = json.get_data()
-	if msg == null:
-		return
+func send_color_selection(color: String) -> void:
+	var gs: Node = _get_game_server()
+	if gs != null and gs.has_method("server_receive_color_selection"):
+		gs.server_receive_color_selection.rpc_id(1, color)
 
-	# Ensure type is a string (JSON may give StringName or int in some edge cases)
+
+func send_action(unit_id: int, action_key: String, path: Array) -> void:
+	var gs: Node = _get_game_server()
+	if gs != null and gs.has_method("server_receive_action"):
+		gs.server_receive_action.rpc_id(1, {
+			unitId = unit_id,
+			actionKey = action_key,
+			path = path
+		})
+
+
+func send_restart() -> void:
+	var gs: Node = _get_game_server()
+	if gs != null and gs.has_method("server_receive_restart"):
+		gs.server_receive_restart.rpc_id(1)
+
+
+func send_game_type_selection(game_type: String) -> void:
+	# Optional: add server_receive_game_type_selection if needed
+	pass
+
+
+## Called by GameServer.client_receive_message when server sends a message.
+func handle_server_message(msg: Dictionary) -> void:
 	var msg_type: String = str(msg.get("type", ""))
 	match msg_type:
 		"request_username":
-			# Server wants a username; let the UI show an input, then call send_username()
 			username_requested.emit()
 		"welcome":
 			player_id = msg.get("playerId", 0)
@@ -111,17 +102,17 @@ func _handle_message(text: String) -> void:
 			game_state = msg.get("state", {})
 			game_state_updated.emit(game_state)
 		"player_action":
-			pass  # Optional: update local preview of other player's actions
+			pass
 		"game_over":
 			game_over.emit(msg.get("winner", -1))
 		"error":
 			error_message.emit(msg.get("message", "Unknown error"))
 		_:
-			# Debug: server sent something we don't handle (e.g. empty type)
 			if msg_type.is_empty():
 				error_message.emit("Server sent message with no type. Keys: %s" % str(msg.keys()))
 			else:
 				error_message.emit("Unknown message type: '%s'" % msg_type)
+
 
 func get_player_color(pid: int) -> String:
 	var players: Array = game_state.get("players", [])
@@ -129,6 +120,7 @@ func get_player_color(pid: int) -> String:
 		if p.get("playerId", -1) == pid:
 			return p.get("color", "#000000")
 	return "#000000"
+
 
 func get_tile_key(q: int, r: int) -> String:
 	return "%d,%d" % [q, r]

@@ -1,0 +1,148 @@
+[gd_scene load_steps=2 format=3 uid="uid://multiplayer_lobby"]
+
+[ext_resource type="Script" path="res://src/multiplayer/multiplayer_lobby.gd" id="1_script"]
+
+[node name="MultiplayerLobby" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+script = ExtResource("1_script")
+
+[node name="VBox" type="VBoxContainer" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 20.0
+offset_top = 20.0
+offset_right = -20.0
+offset_bottom = -20.0
+theme_override_constants/separation = 16
+
+[node name="StatusLabel" type="Label" parent="VBox"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 18
+text = "Enter host address and click Connect."
+
+[node name="ConnectedPlayersLabel" type="Label" parent="VBox"]
+layout_mode = 2
+visible = false
+theme_override_font_sizes/font_size = 14
+text = "Connected (0):"
+
+[node name="ConnectPanel" type="PanelContainer" parent="VBox"]
+layout_mode = 2
+
+[node name="Margin" type="MarginContainer" parent="VBox/ConnectPanel"]
+layout_mode = 2
+theme_override_constants/margin_left = 16
+theme_override_constants/margin_top = 16
+theme_override_constants/margin_right = 16
+theme_override_constants/margin_bottom = 16
+
+[node name="VBox" type="VBoxContainer" parent="VBox/ConnectPanel/Margin"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="HostEdit" type="LineEdit" parent="VBox/ConnectPanel/Margin/VBox"]
+layout_mode = 2
+placeholder_text = "Host IP (e.g. 192.168.1.5 or friend's IP)"
+
+[node name="PortEdit" type="LineEdit" parent="VBox/ConnectPanel/Margin/VBox"]
+layout_mode = 2
+placeholder_text = "8081"
+
+[node name="ConnectButton" type="Button" parent="VBox/ConnectPanel/Margin/VBox"]
+layout_mode = 2
+text = "Connect"
+
+[node name="UsernamePanel" type="PanelContainer" parent="VBox"]
+layout_mode = 2
+
+[node name="Margin" type="MarginContainer" parent="VBox/UsernamePanel"]
+layout_mode = 2
+theme_override_constants/margin_left = 16
+theme_override_constants/margin_top = 16
+theme_override_constants/margin_right = 16
+theme_override_constants/margin_bottom = 16
+
+[node name="VBox" type="VBoxContainer" parent="VBox/UsernamePanel/Margin"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="UsernameEdit" type="LineEdit" parent="VBox/UsernamePanel/Margin/VBox"]
+layout_mode = 2
+placeholder_text = "Your name"
+
+[node name="OKButton" type="Button" parent="VBox/UsernamePanel/Margin/VBox"]
+layout_mode = 2
+text = "OK"
+
+[node name="LobbyPanel" type="PanelContainer" parent="VBox"]
+layout_mode = 2
+visible = false
+
+[node name="Margin" type="MarginContainer" parent="VBox/LobbyPanel"]
+layout_mode = 2
+theme_override_constants/margin_left = 16
+theme_override_constants/margin_top = 16
+theme_override_constants/margin_right = 16
+theme_override_constants/margin_bottom = 16
+
+[node name="VBox" type="VBoxContainer" parent="VBox/LobbyPanel/Margin"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="CreateButton" type="Button" parent="VBox/LobbyPanel/Margin/VBox"]
+layout_mode = 2
+text = "Create game"
+
+[node name="ScenarioOption" type="OptionButton" parent="VBox/LobbyPanel/Margin/VBox"]
+layout_mode = 2
+
+[node name="JoinLabel" type="Label" parent="VBox/LobbyPanel/Margin/VBox"]
+layout_mode = 2
+text = "Join a game:"
+
+[node name="GamesListContainer" type="VBoxContainer" parent="VBox/LobbyPanel/Margin/VBox"]
+layout_mode = 2
+theme_override_constants/separation = 4
+
+[node name="GamePanel" type="PanelContainer" parent="VBox"]
+layout_mode = 2
+visible = false
+
+[node name="Margin" type="MarginContainer" parent="VBox/GamePanel"]
+layout_mode = 2
+theme_override_constants/margin_left = 16
+theme_override_constants/margin_top = 16
+theme_override_constants/margin_right = 16
+theme_override_constants/margin_bottom = 16
+
+[node name="VBox" type="VBoxContainer" parent="VBox/GamePanel/Margin"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="GameCodeLabel" type="Label" parent="VBox/GamePanel/Margin/VBox"]
+layout_mode = 2
+text = ""
+
+[node name="GameRosterLabel" type="Label" parent="VBox/GamePanel/Margin/VBox"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 14
+text = "Players in this game:"
+
+[node name="GameStateLabel" type="Label" parent="VBox/GamePanel/Margin/VBox"]
+layout_mode = 2
+text = ""
+
+[node name="WaitingForHostLabel" type="Label" parent="VBox/GamePanel/Margin/VBox"]
+layout_mode = 2
+visible = false
+theme_override_font_sizes/font_size = 14
+text = "Waiting for host to start the game..."
+
+[node name="LaunchBattleButton" type="Button" parent="VBox/GamePanel/Margin/VBox"]
+layout_mode = 2
+text = "Launch battle"

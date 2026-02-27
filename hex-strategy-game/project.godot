@@ -15,7 +15,7 @@ compatibility/default_parent_skeleton_in_mesh_instance_3d=true
 [application]
 
 config/name="Hex Strategy Game"
-run/main_scene="res://src/battle/scenario_picker.tscn"
+run/main_scene="res://src/main_menu.tscn"
 config/features=PackedStringArray("4.6", "GL Compatibility")
 config/icon="res://icon.svg"
 
@@ -27,6 +27,8 @@ Scenarios="*res://src/global/scenarios.gd"
 HexGrid="*res://src/global/hex_grid.gd"
 Navigation="*res://src/global/navigation.gd"
 EventBus="*res://src/global/event_bus.gd"
+MultiplayerState="*res://src/global/multiplayer_state.gd"
+GameServer="*res://src/server/game_server.gd"
 
 [display]
 

@@ -1,55 +1,143 @@
 extends Node
-## Minimal WebSocket server – same JSON protocol as server3.js.
-## Run this as the main scene (or in a dedicated project) to host; point clients at ws://127.0.0.1:PORT.
-## Expand _handle_message() with full game state and turn logic ported from server3.js.
+## Game server using ENetMultiplayerPeer. Same node works as host or client.
+## Run as main scene to host; run main.tscn and call join_server() to connect as client.
+## Client sends: server_receive_username(), server_receive_color_selection(), server_receive_action(), server_receive_restart().
 
 const PORT := 8080
+const MAX_CLIENTS := 16
+const DEFAULT_HOST := "127.0.0.1"
 
-var _server: WebSocketServer
+var _peer
 var _next_player_id: int = 1
-# Map server peer id (from Godot) -> our player id (1, 2, 3...)
-var _server_id_to_player_id: Dictionary = {}
-# Map our player id -> server peer id (for sending)
-var _player_id_to_server_id: Dictionary = {}
-var _game_state: Dictionary = {}  # TODO: port full state from server3.js
+var _peer_id_to_player_id: Dictionary = {}
+var _player_id_to_peer_id: Dictionary = {}
+var _game_state: Dictionary = {}
 
 func _ready() -> void:
-	_server = WebSocketServer.new()
-	_server.client_connected.connect(_on_client_connected)
-	_server.client_disconnected.connect(_on_client_disconnected)
-	_server.data_received.connect(_on_data_received)
-	var err := _server.listen(PORT)
+	# If this scene has no Main child, we're the dedicated server scene (run alone to host).
+	if _is_dedicated_server_scene():
+		_start_server()
+
+
+func _is_dedicated_server_scene() -> bool:
+	return get_node_or_null("Main") == null
+
+
+func _start_server() -> void:
+	_peer = ENetMultiplayerPeer.new()
+	var err: int = _peer.create_server(PORT, MAX_CLIENTS)
 	if err != OK:
-		push_error("Server failed to listen on port %d: %s" % [PORT, error_string(err)])
+		push_error("Server failed to create ENet server on port %d: %s" % [PORT, error_string(err)])
 		return
-	print("WebSocket server listening on port %d" % PORT)
+	multiplayer.multiplayer_peer = _peer
+	multiplayer.peer_connected.connect(_on_peer_connected)
+	multiplayer.peer_disconnected.connect(_on_peer_disconnected)
+	print("ENet server listening on port %d" % PORT)
 
-func _process(_delta: float) -> void:
-	_server.poll()
 
-func _on_client_connected(server_id: int, _proto: String) -> void:
+func join_server(host: String = DEFAULT_HOST, port: int = PORT) -> Error:
+	if _peer != null:
+		return ERR_ALREADY_IN_USE
+	_peer = ENetMultiplayerPeer.new()
+	var err: int = _peer.create_client(host, port)
+	if err != OK:
+		return err
+	multiplayer.multiplayer_peer = _peer
+	multiplayer.connected_to_server.connect(_on_connected_to_server)
+	multiplayer.connection_failed.connect(_on_connection_failed)
+	print("ENet client connecting to %s:%d" % [host, port])
+	return OK
+
+
+func _on_connected_to_server() -> void:
+	if Engine.has_singleton("GameState"):
+		GameState._on_connected_to_server()
+	return
+
+
+func _on_connection_failed() -> void:
+	if Engine.has_singleton("GameState"):
+		GameState.error_message.emit("Connection failed")
+	return
+
+
+func _on_peer_connected(peer_id: int) -> void:
 	var player_id: int = _next_player_id
 	_next_player_id += 1
-	_server_id_to_player_id[server_id] = player_id
-	_player_id_to_server_id[player_id] = server_id
+	_peer_id_to_player_id[peer_id] = player_id
+	_player_id_to_peer_id[player_id] = peer_id
 	_send_welcome(player_id)
-	print("Client connected (server id %d) -> player %d" % [server_id, player_id])
+	print("Peer %d connected -> player %d" % [peer_id, player_id])
 
-func _on_client_disconnected(server_id: int, _was_clean: bool) -> void:
-	var player_id: int = _server_id_to_player_id.get(server_id, -1)
-	_server_id_to_player_id.erase(server_id)
+
+func _on_peer_disconnected(peer_id: int) -> void:
+	var player_id: int = _peer_id_to_player_id.get(peer_id, -1)
+	_peer_id_to_player_id.erase(peer_id)
 	if player_id >= 0:
-		_player_id_to_server_id.erase(player_id)
-	print("Client disconnected (server id %d, player %d)" % [server_id, player_id])
+		_player_id_to_peer_id.erase(player_id)
+	print("Peer %d disconnected (player %d)" % [peer_id, player_id])
 
-func _on_data_received(server_id: int) -> void:
-	var peer: WebSocketPeer = _server.get_peer(server_id)
-	if peer.get_available_packet_count() == 0:
+
+func _send_to_player(player_id: int, obj: Dictionary) -> void:
+	var peer_id: int = _player_id_to_peer_id.get(player_id, -1)
+	if peer_id < 0:
 		return
-	var packet: PackedByteArray = peer.get_packet()
-	var text: String = packet.get_string_from_utf8()
-	var player_id: int = _server_id_to_player_id.get(server_id, -1)
-	_handle_message(player_id, server_id, text)
+	client_receive_message.rpc_id(peer_id, obj)
+
+
+func _broadcast(obj: Dictionary) -> void:
+	for peer_id in _peer_id_to_player_id:
+		client_receive_message.rpc_id(peer_id, obj)
+
+
+## Called on clients when server sends a message. Forwards to GameState so UI stays in sync.
+@rpc("authority", "reliable")
+func client_receive_message(obj: Dictionary) -> void:
+	if Engine.has_singleton("GameState"):
+		GameState.handle_server_message(obj)
+	return
+
+
+# ---- Server RPCs: called by clients ----
+
+@rpc("any_peer", "reliable")
+func server_receive_username(username: String) -> void:
+	var peer_id: int = multiplayer.get_remote_sender_id()
+	var player_id: int = _peer_id_to_player_id.get(peer_id, -1)
+	if player_id < 0:
+		return
+	print("Player %d username: %s" % [player_id, username])
+
+
+@rpc("any_peer", "reliable")
+func server_receive_color_selection(color: String) -> void:
+	var peer_id: int = multiplayer.get_remote_sender_id()
+	var player_id: int = _peer_id_to_player_id.get(peer_id, -1)
+	if player_id < 0:
+		return
+	print("Player %d chose color %s" % [player_id, color])
+	# TODO: assign color, check if all ready, then initialize game and broadcast update
+
+
+@rpc("any_peer", "reliable")
+func server_receive_action(action: Dictionary) -> void:
+	var peer_id: int = multiplayer.get_remote_sender_id()
+	var player_id: int = _peer_id_to_player_id.get(peer_id, -1)
+	if player_id < 0:
+		return
+	# TODO: validate and store in playerActions; when all ready, execute turn and broadcast
+	pass
+
+
+@rpc("any_peer", "reliable")
+func server_receive_restart() -> void:
+	var peer_id: int = multiplayer.get_remote_sender_id()
+	var player_id: int = _peer_id_to_player_id.get(peer_id, -1)
+	if player_id < 0:
+		return
+	# TODO: reset game state and broadcast
+	pass
+
 
 func _send_welcome(player_id: int) -> void:
 	var colors: Array = ["#4CAF50", "#0000FF", "#FFA500", "#800080", "#FF0000", "#00FFFF"]
@@ -64,39 +152,3 @@ func _send_welcome(player_id: int) -> void:
 		gameTypes = game_types
 	}
 	_send_to_player(player_id, msg)
-
-func _handle_message(player_id: int, _server_id: int, text: String) -> void:
-	var json := JSON.new()
-	if json.parse(text) != OK:
-		push_error("Invalid JSON from player %d" % player_id)
-		return
-	var msg = json.get_data()
-	if msg == null:
-		return
-	var msg_type: String = str(msg.get("type", ""))
-	match msg_type:
-		"username":
-			print("Player %d username: %s" % [player_id, msg.get("username", "")])
-		"color_selection":
-			# TODO: assign color, check if all ready, then initialize game and broadcast update
-			print("Player %d chose color %s" % [player_id, msg.get("color", "")])
-		"action":
-			# TODO: validate and store in playerActions; when all ready, execute turn and broadcast
-			pass
-		"restart":
-			# TODO: reset game state and broadcast
-			pass
-		_:
-			print("Unknown message type from player %d: %s" % [player_id, msg_type])
-
-func _send_to_player(player_id: int, obj: Dictionary) -> void:
-	var server_id: int = _player_id_to_server_id.get(player_id, -1)
-	if server_id < 0:
-		return
-	var peer: WebSocketPeer = _server.get_peer(server_id)
-	peer.send_text(JSON.stringify(obj))
-
-func _broadcast(obj: Dictionary) -> void:
-	var text: String = JSON.stringify(obj)
-	for server_id in _server_id_to_player_id:
-		_server.get_peer(server_id).send_text(text)
