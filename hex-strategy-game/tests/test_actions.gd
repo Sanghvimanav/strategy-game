@@ -9,6 +9,7 @@ static func run_all(tests: Node) -> bool:
 	ok = _test_energy_and_recharge_config(tests) and ok
 	ok = _test_reload_recharge_slow_ability(tests) and ok
 	ok = _test_attack_support_ability_types(tests) and ok
+	ok = _test_ghost_attack_ray_range_and_pattern(tests) and ok
 	return ok
 
 ## Ensures get_action_type and get_action_config stay static so scripts can call them without preloading (avoids parser error).
@@ -102,4 +103,19 @@ static func _test_attack_support_ability_types(tests: Node) -> bool:
 		tests._fail("resupply_adjacent should be ability")
 		return false
 	tests._pass("attack/support ability types")
+	return true
+
+static func _test_ghost_attack_ray_range_and_pattern(tests: Node) -> bool:
+	tests._log("test_actions: ghost attack_ray uses target-only range 2-3")
+	var c: Dictionary = Actions.get_action_config("attack_ray")
+	if c.get("pattern", "") != "target":
+		tests._fail("attack_ray should use pattern=target, got %s" % c.get("pattern", ""))
+		return false
+	if int(c.get("min_range", -1)) != 2:
+		tests._fail("attack_ray min_range should be 2, got %s" % c.get("min_range", -1))
+		return false
+	if int(c.get("max_range", -1)) != 3:
+		tests._fail("attack_ray max_range should be 3, got %s" % c.get("max_range", -1))
+		return false
+	tests._pass("ghost attack_ray uses target-only range 2-3")
 	return true
