@@ -256,21 +256,31 @@ func _update_game_state_label(state: Dictionary) -> void:
 	game_state_label.text = "Turn %d | Phase: %s | Groups: %s" % [turn, phase, ", ".join(group_names)]
 
 
-const SCENARIO_IDS: Array[String] = ["default", "knight_1v1", "zerg_vs_zerg"]
-const SCENARIO_NAMES: Array[String] = ["Default (Knight, Ghost, Mage vs Zergling)", "1v1 Knight vs Mage", "Zergling vs Zergling"]
-
 func _populate_scenario_option() -> void:
 	if not scenario_option:
 		return
 	scenario_option.clear()
-	for i in SCENARIO_IDS.size():
-		scenario_option.add_item(SCENARIO_NAMES[i] if i < SCENARIO_NAMES.size() else SCENARIO_IDS[i], i)
+	var scenarios: Array[Dictionary] = Scenarios.get_multiplayer_scenarios()
+	for i in scenarios.size():
+		var s: Dictionary = scenarios[i]
+		scenario_option.add_item(str(s.get("display_name", s.get("id", "?"))), i)
+		scenario_option.set_item_metadata(i, s.get("id", ""))
 	scenario_option.selected = 0
 
+func _get_selected_scenario_id() -> String:
+	if not scenario_option or scenario_option.selected < 0:
+		return "default"
+	var id_str: String = str(scenario_option.get_item_metadata(scenario_option.selected))
+	if not id_str.is_empty():
+		return id_str
+	var scenarios: Array[Dictionary] = Scenarios.get_multiplayer_scenarios()
+	var idx: int = scenario_option.selected
+	if idx >= 0 and idx < scenarios.size():
+		return str(scenarios[idx].get("id", "default"))
+	return "default"
+
 func _on_create_pressed() -> void:
-	var scenario_id: String = "default"
-	if scenario_option and scenario_option.selected >= 0 and scenario_option.selected < SCENARIO_IDS.size():
-		scenario_id = SCENARIO_IDS[scenario_option.selected]
+	var scenario_id: String = _get_selected_scenario_id()
 	_send_packet({ type = "create_game", scenario_id = scenario_id })
 	status_label.text = "Creating game..."
 

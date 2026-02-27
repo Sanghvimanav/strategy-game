@@ -168,7 +168,20 @@ func select_scenario(id: String) -> void:
 	selected_scenario_id = id
 
 func get_selected_scenario() -> Dictionary:
+	return get_scenario_by_id(selected_scenario_id)
+
+func get_scenario_by_id(id: String) -> Dictionary:
 	for s in available_scenarios:
-		if s.id == selected_scenario_id:
+		if s.id == id:
 			return s
 	return available_scenarios[0] if available_scenarios.size() > 0 else {}
+
+## Returns scenarios suitable for multiplayer (2+ groups).
+func get_multiplayer_scenarios() -> Array[Dictionary]:
+	var out: Array[Dictionary] = []
+	for s in available_scenarios:
+		var groups: Array = s.get("groups", [])
+		if groups.size() < 2:
+			continue
+		out.append(s)
+	return out

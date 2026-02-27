@@ -96,47 +96,42 @@ func join_server(host: String = "127.0.0.1", port: int = PORT) -> Error:
 	return OK
 
 
-func _get_multiplayer_scenarios() -> Dictionary:
-	return {
-		"default": {
-			id = "default",
-			display_name = "Terran vs Zerg (Marine, Ghost vs Zergling, Baneling)",
-			groups = [
-				{ name = "player", ai = false, units = [
-					{ def_path = "res://src/unit/definitions/marine.tres", cell = [1, 0] },
-					{ def_path = "res://src/unit/definitions/ghost.tres", cell = [0, 1] }
-				]},
-				{ name = "opponent", ai = false, units = [
-					{ def_path = "res://src/unit/definitions/zergling.tres", cell = [-1, 1] },
-					{ def_path = "res://src/unit/definitions/baneling.tres", cell = [-2, 0] }
-				]}
-			]
-		},
-		"knight_1v1": {
-			id = "knight_1v1",
-			display_name = "1v1 Knight vs Mage",
-			groups = [
-				{ name = "player", ai = false, units = [
-					{ def_path = "res://src/unit/definitions/knight.tres", cell = [1, 0] }
-				]},
-				{ name = "opponent", ai = false, units = [
-					{ def_path = "res://src/unit/definitions/mage.tres", cell = [-1, 1] }
-				]}
-			]
-		},
-		"zerg_vs_zerg": {
-			id = "zerg_vs_zerg",
-			display_name = "Zergling vs Zergling",
-			groups = [
-				{ name = "player", ai = false, units = [
-					{ def_path = "res://src/unit/definitions/zergling.tres", cell = [1, 0] }
-				]},
-				{ name = "opponent", ai = false, units = [
-					{ def_path = "res://src/unit/definitions/zergling.tres", cell = [-1, 1] }
-				]}
-			]
-		}
-	}
+## Converts a Scenarios.available_scenarios entry to server format.
+## Uses shared scenarios; forces ai=false for all groups (multiplayer); handles randomize_positions.
+func _scenario_to_server_format(s: Dictionary) -> Dictionary:
+	var groups_ser: Array = []
+	var randomize_pos: bool = s.get("randomize_positions", false)
+	for g in s.get("groups", []):
+		var units_list: Array = g.get("units", [])
+		var cell_pool: Array = g.get("cell_pool", [])
+		if randomize_pos and cell_pool.size() >= units_list.size():
+			cell_pool = cell_pool.duplicate()
+			cell_pool.shuffle()
+		var units_ser: Array = []
+		for i in units_list.size():
+			var u_spec: Dictionary = units_list[i]
+			var cell: Array
+			if randomize_pos and i < cell_pool.size():
+				var v = cell_pool[i]
+				cell = [int(v.x), int(v.y)] if v is Vector2i else [int(v[0]), int(v[1])]
+			elif u_spec.has("cell"):
+				var c = u_spec.cell
+				cell = [int(c.x), int(c.y)] if c is Vector2i else [int(c[0]), int(c[1])]
+			else:
+				cell = [0, 0]
+			units_ser.append({ def_path = u_spec.def_path, cell = cell })
+		groups_ser.append({
+			name = g.name,
+			ai = false,
+			units = units_ser
+		})
+	return { id = s.id, display_name = s.display_name, groups = groups_ser }
+
+func _get_scenario_for_multiplayer(scenario_id: String) -> Dictionary:
+	var s: Dictionary = Scenarios.get_scenario_by_id(scenario_id)
+	if s.is_empty():
+		s = Scenarios.available_scenarios[0] if Scenarios.available_scenarios.size() > 0 else {}
+	return _scenario_to_server_format(s)
 
 
 func _generate_short_code() -> String:
@@ -460,8 +455,7 @@ func _handle_message_dict(player_id: int, msg: Dictionary) -> void:
 			var game = _games.get(gid)
 			if game == null:
 				return
-			var scenarios: Dictionary = _get_multiplayer_scenarios()
-			var scenario = scenarios.get(game.scenario_id, scenarios.default)
+			var scenario: Dictionary = _get_scenario_for_multiplayer(game.scenario_id)
 			game.phase = "planning"
 			game.turn = 1
 			game.player_actions = {}
@@ -507,8 +501,7 @@ func _handle_message_dict(player_id: int, msg: Dictionary) -> void:
 
 
 func _create_game(scenario_id: String, host_player_id: int) -> Dictionary:
-	var scenarios: Dictionary = _get_multiplayer_scenarios()
-	var scenario = scenarios.get(scenario_id, scenarios.default)
+	var scenario: Dictionary = _get_scenario_for_multiplayer(scenario_id)
 	var game_id := str(_next_game_id)
 	_next_game_id += 1
 	var short_code := _generate_short_code()
