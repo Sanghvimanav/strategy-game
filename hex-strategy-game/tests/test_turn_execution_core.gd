@@ -16,6 +16,7 @@ static func run_all(tests: Node) -> bool:
 	ok = _test_get_damage_cells_target(tests) and ok
 	ok = _test_get_damage_cells_area_adjacent(tests) and ok
 	ok = _test_execute_turn_move_and_attack(tests) and ok
+	ok = _test_execute_turn_zergling_fast_move_hits_ghost_before_ghost_move(tests) and ok
 	ok = _test_check_win_condition_one_alive(tests) and ok
 	ok = _test_check_win_condition_both_alive(tests) and ok
 	ok = _test_check_win_condition_both_dead(tests) and ok
@@ -214,6 +215,50 @@ static func _test_execute_turn_move_and_attack(tests: Node) -> bool:
 		tests._fail("opponent should have 0 units after zergling dies, got %d" % opponent_units.size())
 		return false
 	tests._pass("execute_turn move and attack")
+	return true
+
+static func _test_execute_turn_zergling_fast_move_hits_ghost_before_ghost_move(tests: Node) -> bool:
+	tests._log("test_turn_execution_core: zergling fast-move onto ghost then ghost moves takes one damage")
+	var game_state := {
+		"groups": [
+			{ "name": "player", "ai": false, "units": [
+				{ "unit_id": 1, "def_path": "res://src/unit/definitions/zergling.tres", "cell": [0, 0], "health": 1, "max_health": 1, "energy": 0, "max_energy": 0 }
+			]},
+			{ "name": "opponent", "ai": false, "units": [
+				{ "unit_id": 2, "def_path": "res://src/unit/definitions/ghost.tres", "cell": [1, 0], "health": 2, "max_health": 2, "energy": 3, "max_energy": 3 }
+			]}
+		]
+	}
+	var zerg_path: Array = []
+	for p in HexGrid.build_path_to(0, 0, 1, 0):
+		zerg_path.append([int(p.x), int(p.y)])
+	var ghost_path: Array = []
+	for p in HexGrid.build_path_to(1, 0, 2, 0):
+		ghost_path.append([int(p.x), int(p.y)])
+	var player_actions := {
+		"player": [
+			{ "unit_id": 1, "action_key": "fast_move", "path": zerg_path, "end_point": [1, 0] }
+		],
+		"opponent": [
+			{ "unit_id": 2, "action_key": "move_short", "path": ghost_path, "end_point": [2, 0] }
+		]
+	}
+	var recording := TurnExecutionCore.execute_turn(game_state, player_actions)
+	var ghost_found := TurnExecutionCore.find_unit_by_id(game_state, 2)
+	if ghost_found.is_empty():
+		tests._fail("ghost should survive with 1 health after taking passive damage")
+		return false
+	var ghost: Dictionary = ghost_found.unit
+	if ghost.get("health", 0) != 1:
+		tests._fail("ghost should take exactly 1 damage, expected health 1 got %s" % ghost.get("health", 0))
+		return false
+	if ghost.get("cell", [0, 0]) != [2, 0]:
+		tests._fail("ghost should still complete move to [2,0], got %s" % ghost.get("cell", []))
+		return false
+	if 2 in recording.get("died_ids", []):
+		tests._fail("ghost should not be in died_ids after taking one damage")
+		return false
+	tests._pass("zergling fast-move onto ghost then ghost moves takes one damage")
 	return true
 
 static func _test_check_win_condition_one_alive(tests: Node) -> bool:
