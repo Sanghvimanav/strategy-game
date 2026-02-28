@@ -5,6 +5,7 @@ class_name TurnExecutionCore
 
 const MOVE_TYPES: Array[String] = ["fast move", "move", "slow move"]
 const ABILITY_TYPES: Array[String] = ["fast ability", "ability", "slow ability"]
+const SPAWN_TYPES: Array[String] = ["spawn"]
 
 
 static func find_unit_by_id(game_state: Dictionary, unit_id: int) -> Dictionary:
@@ -319,6 +320,52 @@ static func execute_turn(game_state: Dictionary, player_actions: Dictionary) -> 
 				applied_damage_by_id[uid] = total
 				if u["health"] <= 0:
 					recording.died_ids.append(uid)
+
+		if action_type in SPAWN_TYPES:
+			for entry in entries:
+				var unit: Dictionary = entry.unit
+				if unit.get("health", 0) <= 0:
+					continue
+				var action: Dictionary = entry.action
+				var config: Dictionary = Actions.get_action_config(str(action.get("action_key", "")))
+				if config.is_empty():
+					continue
+				var spawn_path: String = str(config.get("spawn_unit", ""))
+				if spawn_path.is_empty():
+					continue
+				var ec: int = int(config.get("energy_consumption", 0))
+				if ec > 0 and unit.get("max_energy", 0) > 0:
+					if unit.get("energy", 0) < ec:
+						continue
+					unit["energy"] = maxi(0, unit.get("energy", 0) - ec)
+				var def_dict: Dictionary = get_unit_def(spawn_path)
+				if def_dict.is_empty():
+					continue
+				var uc: Array = unit.get("cell", [0, 0])
+				var max_id: int = 0
+				for g in game_state.get("groups", []):
+					for u in g.get("units", []):
+						max_id = maxi(max_id, int(u.get("unit_id", 0)))
+				var new_id: int = max_id + 1
+				var new_unit: Dictionary = {
+					"unit_id": new_id,
+					"def_path": spawn_path,
+					"cell": [int(uc[0]), int(uc[1])],
+					"health": def_dict.get("max_health", 2),
+					"max_health": def_dict.get("max_health", 2),
+					"energy": def_dict.get("start_energy", 0),
+					"max_energy": def_dict.get("max_energy", 0),
+					"is_active": true
+				}
+				entry.group.get("units", []).append(new_unit)
+				recording.actions.append({
+					type = "spawn",
+					unit_id = unit.get("unit_id", -1),
+					action_key = action.get("action_key", ""),
+					spawned_unit_id = new_id,
+					spawn_path = spawn_path,
+					cell = uc.duplicate()
+				})
 
 	for group in game_state.get("groups", []):
 		var units: Array = group.get("units", [])

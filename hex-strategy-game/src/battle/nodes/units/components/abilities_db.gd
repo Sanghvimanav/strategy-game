@@ -27,7 +27,7 @@ func get_options_for_action_key(action_key: String) -> Array:
 			return []
 		var config: Dictionary = Actions.get_action_config(action_key)
 		var power: int = int(config.get("energy_consumption", 0))
-		if power > 0 and unit.max_energy > 0 and unit.energy <= 0:
+		if power > 0 and unit.max_energy > 0 and unit.energy < power:
 			return []
 		var defs_arr: Array = Actions.get_ability_definitions_for_action(action_key)
 		for def in defs_arr:

@@ -154,6 +154,7 @@ func apply_server_state(state: Dictionary) -> void:
 			var cell: Vector2i = Vector2i(int(cell_arr[0]), int(cell_arr[1])) if cell_arr.size() >= 2 else Vector2i.ZERO
 			var health: int = int(u_spec.get("health", 0))
 			var energy: int = int(u_spec.get("energy", 0))
+			var found: bool = false
 			for child in group_node.get_children():
 				if not child is Unit:
 					continue
@@ -164,7 +165,22 @@ func apply_server_state(state: Dictionary) -> void:
 				child.energy = energy
 				if child.energy_bar and child.max_energy > 0:
 					child.energy_bar.update_value(energy)
+				found = true
 				break
+			if not found:
+				var def_path: String = str(u_spec.get("def_path", ""))
+				if not def_path.is_empty():
+					var def: UnitDefinition = load(def_path) as UnitDefinition
+					if def != null:
+						var unit: Unit = UNIT_SCENE.instantiate() as Unit
+						unit.def = def
+						unit.starting_cell = cell
+						unit.health = int(u_spec.get("health", def.max_health))
+						unit.max_health = int(u_spec.get("max_health", def.max_health))
+						unit.energy = int(u_spec.get("energy", 0))
+						unit.max_energy = int(u_spec.get("max_energy", def.max_energy))
+						unit.set_meta("unit_id", unit_id)
+						group_node.add_child(unit)
 		# Remove units no longer in server state (dead)
 		var to_remove: Array[Node] = []
 		for child in group_node.get_children():
@@ -889,6 +905,14 @@ func _build_actions_by_type_from_server(turn_result: Dictionary) -> Dictionary:
 			else:
 				ac_inst.end_point = unit.cell
 			entry["ac"] = ac_inst
+		if atype == "spawn":
+			var cell_arr: Array = a.get("cell", [0, 0])
+			var spawn_cell: Vector2 = Vector2(int(cell_arr[0]), int(cell_arr[1])) if cell_arr.size() >= 2 else unit.cell
+			entry["spawn_data"] = {
+				"spawned_unit_id": int(a.get("spawned_unit_id", 0)),
+				"spawn_path": str(a.get("spawn_path", "")),
+				"cell": spawn_cell
+			}
 		if not actions_by_type.has(atype):
 			actions_by_type[atype] = []
 		actions_by_type[atype].append(entry)

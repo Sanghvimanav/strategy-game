@@ -150,6 +150,20 @@ func _build_scenarios() -> void:
 			},
 		],
 	})
+	# Spawning Pool: Pool + 2 Zerglings vs Marine (test spawn)
+	available_scenarios.append({
+		"id": "spawning_pool",
+		"display_name": "Spawning Pool (Pool + Zerglings vs Marine)",
+		"groups": [
+			{"name": "player", "units": [
+				{"def_path": "res://src/unit/definitions/spawning_pool.tres", "cell": Vector2i(0, 0)},
+				{"def_path": "res://src/unit/definitions/zergling.tres", "cell": Vector2i(1, 0)},
+			]},
+			{"name": "opponent", "ai": true, "units": [
+				{"def_path": "res://src/unit/definitions/marine.tres", "cell": Vector2i(-1, 1)},
+			]},
+		],
+	})
 	# 1v1 Knight
 	available_scenarios.append({
 		"id": "knight_1v1",

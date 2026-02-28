@@ -188,6 +188,15 @@ const ACTION_CONFIGS: Dictionary = {
 		energy_consumption = 0,
 		tile_resource_depletion = 1,
 	},
+	"spawn_zergling": {
+		key = "spawn_zergling",
+		type = "spawn",
+		name = "Spawn Zergling",
+		pattern = "self",
+		color = "#8B4513",
+		energy_consumption = 5,
+		spawn_unit = "res://src/unit/definitions/zergling.tres",
+	},
 }
 
 ## Processing order: moves, then abilities by speed (fast / normal / slow), then spawn/extract.
@@ -255,6 +264,11 @@ func get_ability_definitions_for_action(action_key: String) -> Array[ActionDefin
 	var atype: String = config.get("type", "")
 	if action_key in ["reload", "recharge"]:
 		var result: Array[ActionDefinition] = _build_self_definitions(config.get("name", "Rest"))
+		for ad in result:
+			ad.action_key = action_key
+		return result
+	if action_key in ["spawn_zergling"]:
+		var result: Array[ActionDefinition] = _build_self_definitions(config.get("name", "Spawn"))
 		for ad in result:
 			ad.action_key = action_key
 		return result

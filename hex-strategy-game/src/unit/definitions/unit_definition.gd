@@ -9,7 +9,8 @@ enum Type {
 	Peasant,
 	Zergling,
 	TerranBase,
-	Viper
+	Viper,
+	SpawningPool
 }
 
 ## Faction for team identity, ally/enemy rules, and future content. Used alongside group assignment.

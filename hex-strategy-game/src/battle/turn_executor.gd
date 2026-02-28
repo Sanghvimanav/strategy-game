@@ -7,8 +7,10 @@ extends RefCounted
 ## Use TurnExecutionCore as single source for action type constants.
 const MOVE_TYPES: Array[String] = TurnExecutionCore.MOVE_TYPES
 const ABILITY_TYPES: Array[String] = TurnExecutionCore.ABILITY_TYPES
+const SPAWN_TYPES: Array[String] = TurnExecutionCore.SPAWN_TYPES
 const ATTACK_TIMEOUT: float = 5.0
 const HEAL_EFFECT_SCENE := preload("res://src/unit/art/effects/heal_effect.tscn")
+const UNIT_SCENE := preload("res://src/unit/unit.tscn")
 
 ## Execution context passed through the pipeline.
 ## apply_damage: if false, animations only (replay mode)
@@ -75,7 +77,9 @@ static func _get_handler_for_type(action_type: String) -> Callable:
 		return _handle_moves
 	if action_type in ABILITY_TYPES:
 		return _handle_abilities
-	# spawn, extract: no-op
+	if action_type in SPAWN_TYPES:
+		return _handle_spawn
+	# extract: no-op
 	return Callable()
 
 static func _handle_abilities(action_type: String, entries: Array, ctx: ExecutionContext) -> void:
@@ -158,6 +162,44 @@ static func _handle_support(_action_type: String, entries: Array, ctx: Execution
 				target.add_child(effect)
 		if ctx.apply_damage:
 			ctx.recording.actions.append({ "type": _action_type, "unit": supporter, "ac": ac })
+
+static func _handle_spawn(action_type: String, entries: Array, ctx: ExecutionContext) -> void:
+	for entry in entries:
+		var spawner = entry.unit
+		if not _valid_unit(spawner):
+			continue
+		var spawn_data: Dictionary = entry.get("spawn_data", {})
+		if spawn_data.is_empty():
+			continue
+		var spawn_path: String = str(spawn_data.get("spawn_path", ""))
+		if spawn_path.is_empty():
+			continue
+		var cell_val = spawn_data.get("cell", spawner.cell)
+		var spawn_cell: Vector2 = spawner.cell
+		if cell_val is Vector2:
+			spawn_cell = cell_val
+		elif cell_val is Array and cell_val.size() >= 2:
+			spawn_cell = Vector2(int(cell_val[0]), int(cell_val[1]))
+		var spawned_unit_id: int = int(spawn_data.get("spawned_unit_id", 0))
+		var action_key: String = entry.ac.definition.action_key if entry.get("ac") and entry.ac.definition else "spawn_zergling"
+		var config: Dictionary = Actions.get_action_config(action_key)
+		var power: int = int(config.get("energy_consumption", 0))
+		if ctx.apply_damage and power > 0 and spawner.max_energy > 0:
+			spawner.energy = maxi(0, spawner.energy - power)
+			if spawner.energy_bar:
+				spawner.energy_bar.update_value(spawner.energy)
+		var def: Resource = load(spawn_path) as UnitDefinition
+		if def == null:
+			continue
+		var new_unit: Unit = UNIT_SCENE.instantiate() as Unit
+		new_unit.def = def
+		new_unit.starting_cell = Vector2i(int(spawn_cell.x), int(spawn_cell.y))
+		new_unit.set_meta("unit_id", spawned_unit_id)
+		var group_node: Node = spawner.get_parent()
+		if group_node != null:
+			group_node.add_child(new_unit)
+		if ctx.apply_damage:
+			ctx.recording.actions.append({ "type": action_type, "unit": spawner, "ac": entry.get("ac"), "spawned_unit_id": spawned_unit_id, "spawn_path": spawn_path, "cell": spawn_cell })
 
 static func _handle_moves(action_type: String, entries: Array, ctx: ExecutionContext) -> void:
 	for entry in entries:
