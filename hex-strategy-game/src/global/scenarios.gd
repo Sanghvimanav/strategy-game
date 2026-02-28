@@ -185,16 +185,62 @@ func get_selected_scenario() -> Dictionary:
 	return get_scenario_by_id(selected_scenario_id)
 
 func _default_tile_resources() -> Dictionary:
-	return {
-		HexGrid.get_cell_key(0, 0): { amount = 5, max_amount = 5, resource_type = "ore" },
-		HexGrid.get_cell_key(2, 0): { amount = 1, max_amount = 1, resource_type = "crystal" },
-		HexGrid.get_cell_key(-2, 1): { amount = 3, max_amount = 3, resource_type = "gas" },
-	}
+	return {}
+
+## Returns random village tiles for zerg_vs_terran. Excludes unit cell pools.
+func _random_village_tiles_for_zerg_vs_terran() -> Dictionary:
+	const HEX_RADIUS := 5
+	const NUM_VILLAGES := 5
+	const VILLAGE_AMOUNT := 3
+	var excluded: Dictionary = {}
+	for g in [{
+		"cell_pool": [
+			Vector2i(0, 0), Vector2i(0, 1), Vector2i(0, 2), Vector2i(0, 3), Vector2i(0, 4), Vector2i(0, 5),
+			Vector2i(1, -5), Vector2i(1, -4), Vector2i(1, -3), Vector2i(1, -2), Vector2i(1, -1), Vector2i(1, 0),
+			Vector2i(1, 1), Vector2i(1, 2), Vector2i(1, 3), Vector2i(1, 4),
+			Vector2i(2, -5), Vector2i(2, -4), Vector2i(2, -3), Vector2i(2, -2), Vector2i(2, -1), Vector2i(2, 0),
+			Vector2i(2, 1), Vector2i(2, 2), Vector2i(2, 3),
+			Vector2i(3, -5), Vector2i(3, -4), Vector2i(3, -3), Vector2i(3, -2), Vector2i(3, -1), Vector2i(3, 0),
+			Vector2i(3, 1), Vector2i(3, 2),
+			Vector2i(4, -5), Vector2i(4, -4), Vector2i(4, -3), Vector2i(4, -2), Vector2i(4, -1), Vector2i(4, 0), Vector2i(4, 1),
+			Vector2i(5, -5), Vector2i(5, -4), Vector2i(5, -3), Vector2i(5, -2), Vector2i(5, -1), Vector2i(5, 0),
+		],
+	}, {
+		"cell_pool": [
+			Vector2i(-5, 0), Vector2i(-5, 1), Vector2i(-5, 2), Vector2i(-5, 3), Vector2i(-5, 4), Vector2i(-5, 5),
+			Vector2i(-4, -1), Vector2i(-4, 0), Vector2i(-4, 1), Vector2i(-4, 2), Vector2i(-4, 3), Vector2i(-4, 4), Vector2i(-4, 5),
+			Vector2i(-3, -2), Vector2i(-3, -1), Vector2i(-3, 0), Vector2i(-3, 1), Vector2i(-3, 2), Vector2i(-3, 3), Vector2i(-3, 4), Vector2i(-3, 5),
+			Vector2i(-2, -3), Vector2i(-2, -2), Vector2i(-2, -1), Vector2i(-2, 0), Vector2i(-2, 1), Vector2i(-2, 2), Vector2i(-2, 3), Vector2i(-2, 4), Vector2i(-2, 5),
+			Vector2i(-1, -4), Vector2i(-1, -3), Vector2i(-1, -2), Vector2i(-1, -1), Vector2i(-1, 0), Vector2i(-1, 1), Vector2i(-1, 2), Vector2i(-1, 3), Vector2i(-1, 4), Vector2i(-1, 5),
+			Vector2i(0, -5), Vector2i(0, -4), Vector2i(0, -3), Vector2i(0, -2), Vector2i(0, -1),
+		],
+	}]:
+		for c in g.cell_pool:
+			excluded[HexGrid.get_cell_key(c.x, c.y)] = true
+	var candidates: Array[Vector2i] = []
+	for q in range(-HEX_RADIUS, HEX_RADIUS + 1):
+		for r in range(-HEX_RADIUS, HEX_RADIUS + 1):
+			if HexGrid.hex_distance(0, 0, q, r) > HEX_RADIUS:
+				continue
+			if excluded.has(HexGrid.get_cell_key(q, r)):
+				continue
+			candidates.append(Vector2i(q, r))
+	if candidates.size() < NUM_VILLAGES:
+		return {}
+	candidates.shuffle()
+	var out: Dictionary = {}
+	for i in mini(NUM_VILLAGES, candidates.size()):
+		var c: Vector2i = candidates[i]
+		out[HexGrid.get_cell_key(c.x, c.y)] = { amount = VILLAGE_AMOUNT, max_amount = VILLAGE_AMOUNT, resource_type = "village" }
+	return out
 
 func _with_tile_resources(s: Dictionary) -> Dictionary:
 	var decorated: Dictionary = s.duplicate(true)
 	if not decorated.has("tile_resources"):
-		decorated["tile_resources"] = _default_tile_resources()
+		if decorated.get("id", "") == "zerg_vs_terran":
+			decorated["tile_resources"] = _random_village_tiles_for_zerg_vs_terran()
+		else:
+			decorated["tile_resources"] = _default_tile_resources()
 	return decorated
 
 func get_scenario_by_id(id: String) -> Dictionary:
