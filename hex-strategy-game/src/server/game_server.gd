@@ -123,9 +123,15 @@ func _scenario_to_server_format(s: Dictionary) -> Dictionary:
 		groups_ser.append({
 			name = g.name,
 			ai = false,
-			units = units_ser
+			units = units_ser,
+			resources = g.get("resources", {}).duplicate(true)
 		})
-	return { id = s.id, display_name = s.display_name, groups = groups_ser }
+	return {
+		id = s.id,
+		display_name = s.display_name,
+		groups = groups_ser,
+		tile_resources = s.get("tile_resources", {}).duplicate(true)
+	}
 
 func _get_scenario_for_multiplayer(scenario_id: String) -> Dictionary:
 	var s: Dictionary = Scenarios.get_scenario_by_id(scenario_id)
@@ -149,7 +155,8 @@ func _serialize_game_state(game: Dictionary) -> Dictionary:
 			name = g.name,
 			ai = g.get("ai", false),
 			player_id = g.get("player_id"),
-			units = g.units.duplicate(true)
+			units = g.units.duplicate(true),
+			resources = g.get("resources", {}).duplicate(true)
 		})
 	return {
 		game_id = game.game_id,
@@ -158,6 +165,7 @@ func _serialize_game_state(game: Dictionary) -> Dictionary:
 		phase = game.phase,
 		turn = game.turn,
 		groups = groups_ser,
+		tile_resources = game.get("tile_resources", {}).duplicate(true),
 		player_actions = game.player_actions.duplicate(true),
 		roster = _build_roster(game)
 	}
@@ -459,10 +467,12 @@ func _handle_message_dict(player_id: int, msg: Dictionary) -> void:
 			game.phase = "planning"
 			game.turn = 1
 			game.player_actions = {}
+			game.tile_resources = scenario.get("tile_resources", {}).duplicate(true)
 			var uid := 1
 			for gi in game.groups.size():
 				var g = game.groups[gi]
 				var g_spec = scenario.groups[gi]
+				g.resources = g_spec.get("resources", {}).duplicate(true)
 				g.units.clear()
 				for u_spec in g_spec.units:
 					var def_path: String = u_spec.get("def_path", "")
@@ -514,7 +524,8 @@ func _create_game(scenario_id: String, host_player_id: int) -> Dictionary:
 			name = g_spec.name,
 			ai = g_spec.get("ai", false),
 			player_id = host_player_id if gi == 0 and not g_spec.get("ai", false) else null,
-			units = []
+			units = [],
+			resources = g_spec.get("resources", {}).duplicate(true)
 		}
 		for u_spec in g_spec.get("units", []):
 			var unit_id: int = _next_unit_id
@@ -544,6 +555,7 @@ func _create_game(scenario_id: String, host_player_id: int) -> Dictionary:
 		phase = "planning",
 		turn = 1,
 		groups = groups,
+		tile_resources = scenario.get("tile_resources", {}).duplicate(true),
 		player_actions = {},
 		status = "waiting"
 	}

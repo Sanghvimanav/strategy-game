@@ -68,6 +68,7 @@ func apply_scenario(scenario: Dictionary) -> void:
 			group_node.name = group_name
 			group_node.y_sort_enabled = true
 			add_child(group_node)
+		group_node.set_meta("resource_inventory", group_spec.get("resources", {}).duplicate(true))
 		for c in group_node.get_children():
 			group_node.remove_child(c)
 			c.queue_free()
@@ -112,6 +113,7 @@ func apply_multiplayer_state(state: Dictionary) -> void:
 			group_node.name = group_name
 			group_node.y_sort_enabled = true
 			add_child(group_node)
+		group_node.set_meta("resource_inventory", g.get("resources", {}).duplicate(true))
 		for c in group_node.get_children():
 			group_node.remove_child(c)
 			c.queue_free()
@@ -143,6 +145,7 @@ func apply_server_state(state: Dictionary) -> void:
 		var group_node = get_node_or_null(group_name)
 		if group_node == null:
 			continue
+		group_node.set_meta("resource_inventory", g.get("resources", {}).duplicate(true))
 		var live_ids: Array[int] = []
 		for u_spec in g.get("units", []):
 			var unit_id: int = int(u_spec.get("unit_id", 0))
@@ -174,6 +177,11 @@ func apply_server_state(state: Dictionary) -> void:
 				to_remove.append(child)
 		for node in to_remove:
 			node.queue_free()
+	var hex_map_for_resources = get_parent().get_node_or_null("hex_map")
+	if hex_map_for_resources and hex_map_for_resources.has_method("apply_tile_resource_state"):
+		var tile_resources = state.get("tile_resources", {})
+		if tile_resources is Dictionary and not tile_resources.is_empty():
+			hex_map_for_resources.apply_tile_resource_state(tile_resources)
 	turn_number = int(state.get("turn", 1))
 	EventBus.turn_changed.emit(turn_number)
 	_clear_all_planned_actions()
@@ -443,8 +451,13 @@ func _build_game_state_from_scene() -> Dictionary:
 		var g_dict: Dictionary = {
 			"name": group.name,
 			"ai": group.name in ai_group_names,
-			"units": []
+			"units": [],
+			"resources": {}
 		}
+		if group.has_meta("resource_inventory"):
+			var inv = group.get_meta("resource_inventory")
+			if inv is Dictionary:
+				g_dict["resources"] = inv.duplicate(true)
 		for child in group.get_children():
 			if not child is Unit:
 				continue
@@ -464,7 +477,11 @@ func _build_game_state_from_scene() -> Dictionary:
 				"is_active": u.is_active
 			})
 		groups_arr.append(g_dict)
-	return { "groups": groups_arr }
+	var out_state: Dictionary = { "groups": groups_arr }
+	var hex_map_node = get_parent().get_node_or_null("hex_map")
+	if hex_map_node and hex_map_node.has_method("get_tile_resource_state"):
+		out_state["tile_resources"] = hex_map_node.get_tile_resource_state()
+	return out_state
 
 ## Build player_actions from planned actions and passives for all groups.
 func _build_player_actions_from_units(game_state: Dictionary) -> Dictionary:
@@ -959,6 +976,10 @@ func play_resolved_turn(turn_result: Dictionary, final_state: Dictionary) -> voi
 	else:
 		turn_number += 1
 	EventBus.turn_changed.emit(turn_number)
+	if not final_state.is_empty() and final_state.has("tile_resources") and hex_map_node and hex_map_node.has_method("apply_tile_resource_state"):
+		var tile_resources = final_state.get("tile_resources", {})
+		if tile_resources is Dictionary and not tile_resources.is_empty():
+			hex_map_node.apply_tile_resource_state(tile_resources)
 	if hex_map_node and hex_map_node.has_method("refresh_fog"):
 		hex_map_node.refresh_fog()
 	_clear_all_planned_actions()
